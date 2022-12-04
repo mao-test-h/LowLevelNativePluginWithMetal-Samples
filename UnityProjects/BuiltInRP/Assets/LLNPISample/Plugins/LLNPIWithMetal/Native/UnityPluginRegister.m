@@ -1,6 +1,7 @@
 #import <UIKit/UIKit.h>
 #import <Metal/Metal.h>
 #import "UnityAppController.h"
+#import "UnityFramework.h"
 
 #include "Unity/IUnityInterface.h"
 #include "Unity/IUnityGraphics.h"
@@ -252,6 +253,16 @@ void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces
 void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload() {
     g_Graphics->UnregisterDeviceEventCallback(OnGraphicsDeviceEvent);
 }
+
+
+// MARK:- UnityGraphicsBridgeの実装 (Swiftからアクセスしたいので、@interface の宣言は `UnityFramework.h` にある)
+
+@implementation UnityGraphicsBridge {
+}
++ (IUnityGraphicsMetalV1*)getUnityGraphicsMetalV1 {
+    return g_MetalGraphics;
+}
+@end
 
 
 // MARK:- UnityPluginLoad と UnityPluginUnload の登録 (iOSのみ)
