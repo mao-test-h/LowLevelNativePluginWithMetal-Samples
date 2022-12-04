@@ -25,7 +25,7 @@ namespace LLNPISample.Plugins.LLNPIWithMetal.Editor
             // 1. 先ずはビルド結果にあるプラグインが配置される場所と同じところにコピー
             var srcPath = Application.dataPath + shaderPath;
             var dstPath = path + nativePath;
-            File.Copy(srcPath, dstPath);
+            File.Copy(srcPath, dstPath, true);
 
             // 2. xcodeprojにファイルとして追加し、ターゲットに含めてやる
             var frameworkGuid = project.GetUnityFrameworkTargetGuid();
