@@ -1,5 +1,5 @@
 {
-    "name": "MetalNativeRenderSample",
+    "name": "LLNPIWithMetal.Managed",
     "rootNamespace": "",
     "references": [],
     "includePlatforms": [],
