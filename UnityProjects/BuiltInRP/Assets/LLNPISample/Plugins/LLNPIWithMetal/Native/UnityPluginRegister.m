@@ -208,9 +208,13 @@ static void DoCaptureRT() {
 // TODO: ↑をSwift側に実装
 
 // MARK:- P/Invoke
-// NOTE: ここではC側で定義されてるシンボルが必要な関数のみ宣言する。其れ以外はSwift側の`NativeCallProxy`に定義すること。
 
-// NOTE: onRenderEventの実装はSwift側にある (ここでは外部宣言だけ)
+// NOTE:
+// - ここではC側で定義されてるシンボルが必要な関数のみ宣言する
+//     - それ以外はSwift側の`NativeCallProxy`に定義すること
+
+extern void onUnityGfxDeviceEventInitialize();
+
 extern void onRenderEvent();
 
 // GL.IssuePluginEvent で登録するコールバック関数のポインタを返す
@@ -230,6 +234,7 @@ static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType ev
         case kUnityGfxDeviceEventInitialize:
             assert(g_Graphics->GetRenderer() == kUnityGfxRendererMetal);
             CreatePluginAssets();
+            onUnityGfxDeviceEventInitialize();
             break;
         default:
             // ignore others
@@ -255,7 +260,11 @@ void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload() {
 }
 
 
-// MARK:- UnityGraphicsBridgeの実装 (Swiftからアクセスしたいので、@interface の宣言は `UnityFramework.h` にある)
+
+// MARK:- UnityGraphicsBridgeの実装
+
+// NOTE:
+// - Swiftからアクセスしたいので、@interface の宣言は UmbrellaHeaderである `UnityFramework.h` にある
 
 @implementation UnityGraphicsBridge {
 }
@@ -263,6 +272,7 @@ void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload() {
     return g_MetalGraphics;
 }
 @end
+
 
 
 // MARK:- UnityPluginLoad と UnityPluginUnload の登録 (iOSのみ)
