@@ -23,13 +23,21 @@ namespace LLNPISample.Plugins.LLNPIWithMetal.Managed
             CallRenderEventFunc(EventType.CopyRTtoRT);
         }
 
-        // we will do several pretty useless events to show the usage of all api functions
+        /// <summary>
+        /// サンプルのレンダリングイベント
+        /// </summary>
         private enum EventType
         {
-            // will do an extra draw call to currently setup rt with custom shader
+            /// <summary>
+            /// Unityが持つレンダーターゲットに対して、追加で描画イベントの呼び出しを行う
+            /// </summary>
+            /// <remarks>Unityが実行する既存の描画をフックし、追加の描画を行うサンプル</remarks>
             ExtraDrawCall = 0,
 
-            // copy src rt to internal texture and draws rect using it to dst r
+            /// <summary>
+            /// `src`を内部的なテクスチャにコピーし、それを`dst`上の矩形に対し描画する
+            /// </summary>
+            /// <remarks>独自のエンコーダーを実行する幾つかの例</remarks>
             CopyRTtoRT,
         }
 

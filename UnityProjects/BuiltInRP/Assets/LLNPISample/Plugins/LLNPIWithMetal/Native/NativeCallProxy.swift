@@ -1,7 +1,7 @@
 import Foundation
 
 /// NOTE:
-/// - 以下2つの関数はC側で定義されているマクロ周りの都合から`UnityPluginRegister.m`で宣言されている
+/// - 以下2つの関数はC側で定義されているマクロ周りの都合から`UnityPluginRegister.m`で外部宣言されている
 ///     - `onUnityGfxDeviceEventInitialize`
 ///     - `onRenderEvent`
 
@@ -9,18 +9,19 @@ import Foundation
 /// NOTE: `OnGraphicsDeviceEvent -> kUnityGfxDeviceEventInitialize`のタイミングで呼び出される
 @_cdecl("onUnityGfxDeviceEventInitialize")
 func onUnityGfxDeviceEventInitialize() {
-    MetalPlugin.onInitialize()
+    let unityMetal = UnityGraphicsBridge.getUnityGraphicsMetalV1().pointee
+    MetalPlugin.shared = MetalPlugin(with: unityMetal)
 }
 
 /// Unity側から GL.IssuePluginEvent を呼ぶとレンダリングスレッドから呼び出されるメソッド
 @_cdecl("onRenderEvent")
 func onRenderEvent(eventId: Int32) {
-    MetalPlugin.onRenderEvent(eventId: eventId)
+    MetalPlugin.shared.onRenderEvent(eventId: eventId)
 }
 
 // P/Invoke
 
 @_cdecl("setRTCopyTargets")
-func setRTCopyTargets(_ src: UnsafeRawPointer?, _ dst: UnsafeRawPointer?) {
-    MetalPlugin.setRTCopyTargets(src, dst)
+func setRTCopyTargets(_ src: UnityRenderBuffer, _ dst: UnityRenderBuffer) {
+    MetalPlugin.shared.setRTCopyTargets(src, dst)
 }

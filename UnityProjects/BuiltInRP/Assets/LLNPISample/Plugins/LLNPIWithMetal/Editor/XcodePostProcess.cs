@@ -18,28 +18,10 @@ namespace LLNPISample.Plugins.LLNPIWithMetal.Editor
             var pbxProject = new PBXProject();
             pbxProject.ReadFromString(File.ReadAllText(pbxProjectPath));
 
-            AddMetalShader(xcodeprojPath, ref pbxProject);
             ReplaceNativeSources(xcodeprojPath);
             SetPublicHeader(ref pbxProject);
 
             File.WriteAllText(pbxProjectPath, pbxProject.WriteToString());
-        }
-
-        private static void AddMetalShader(string xcodeprojPath, ref PBXProject pbxProject)
-        {
-            // `.metal` はAssets以下にあっても自動でxcodeprojに追加されないっぽいので、手動でコピーしてプロジェクトに足してやる。
-            const string shaderPath = "/LLNPISample/Plugins/LLNPIWithMetal/Native/Shader.metal";
-            const string nativePath = "/Libraries" + shaderPath;
-
-            // 1. 先ずはビルド結果にあるプラグインが配置される場所と同じところにコピー
-            var srcPath = Application.dataPath + shaderPath;
-            var dstPath = xcodeprojPath + nativePath;
-            File.Copy(srcPath, dstPath, true);
-
-            // 2. xcodeprojにファイルとして追加し、ターゲットに含めてやる
-            var frameworkGuid = pbxProject.GetUnityFrameworkTargetGuid();
-            var file = pbxProject.AddFile(dstPath, nativePath, PBXSourceTree.Source);
-            pbxProject.AddFileToBuild(frameworkGuid, file);
         }
 
         private static void ReplaceNativeSources(string xcodeprojPath)
