@@ -1,9 +1,10 @@
 /// シェーダーのソースコード
 ///
-/// NOTE: 本来であれば `.metal` 形式で持ちたいが...以下の課題が出てきたので一旦は文字列として持つ
+/// NOTE: 本来であれば `.metal` 形式で持ちたいが、色々と手間っぽい上に今回はシンプルな実装なので文字列で持ってしまっている
 /// - Unity上に`.metal`形式で配置してもビルド時に自動でxcodeprojに含んでくれない
-///     - Editor拡張を実装して手動でPBXProjectに追加すれば解決は可能
-/// - `device.makeDefaultLibrary`を実行したらエラーが発生
+///     - → 一応Editor拡張を実装して手動でPBXProjectに追加すれば解決は可能
+/// - UaaLの運用を踏まえると複雑化しそう
+///     - → Unityだけでビルドする分には`Unity-iPhone`に含めることで `makeDefaultLibrary`でも取得可能
 final class Shader {
     static let shaderSrc: String =
         """

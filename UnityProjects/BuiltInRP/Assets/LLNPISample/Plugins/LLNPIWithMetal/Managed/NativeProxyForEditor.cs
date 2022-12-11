@@ -4,12 +4,12 @@ namespace LLNPISample.Plugins.LLNPIWithMetal.Managed
 {
     public sealed class NativeProxyForEditor : INativeProxy
     {
-        public void DoExtraDrawCall()
+        void INativeProxy.DoExtraDrawCall()
         {
             // do nothing
         }
 
-        public void DoCopyRT(RenderTexture srcRT, RenderTexture dstRT)
+        void INativeProxy.DoCopyRT(RenderBuffer src, RenderBuffer dst)
         {
             // do nothing
         }
