@@ -33,8 +33,8 @@ namespace LLNPISample.Scripts
         {
             yield return new WaitForEndOfFrame();
 
-            // note that we do that AFTER all unity rendering is done.
-            // it is especially important if AA is involved, as we will end encoder (resulting in AA resolve)
+            // こちらのイベントはUnityが実行する全てのレンダリングが完了した後に呼び出す必要がある。
+            // (AAが関係している場合には特に重要であり、ネイティブ側でエンコーダーを終了することによってAAの解決が行われる)
             _nativeProxy.DoCopyRT(_targetCamera.targetTexture, null);
             yield return null;
         }
