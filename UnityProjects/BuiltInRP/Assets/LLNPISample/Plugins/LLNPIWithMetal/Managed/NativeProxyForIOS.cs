@@ -6,20 +6,17 @@ namespace LLNPISample.Plugins.LLNPIWithMetal.Managed
 {
     public sealed class NativeProxyForIOS : INativeProxy
     {
-        public void DoExtraDrawCall()
+        void INativeProxy.DoExtraDrawCall()
         {
             CallRenderEventFunc(EventType.ExtraDrawCall);
         }
 
-        public void DoCopyRT(RenderTexture srcRT, RenderTexture dstRT)
+        void INativeProxy.DoCopyRT(RenderBuffer src, RenderBuffer dst)
         {
             [DllImport("__Internal", EntryPoint = "setRTCopyTargets")]
             static extern void SetRTCopyTargets(IntPtr src, IntPtr dst);
 
-            var src = srcRT ? srcRT.colorBuffer : Display.main.colorBuffer;
-            var dst = dstRT ? dstRT.colorBuffer : Display.main.colorBuffer;
             SetRTCopyTargets(src.GetNativeRenderBufferPtr(), dst.GetNativeRenderBufferPtr());
-
             CallRenderEventFunc(EventType.CopyRTtoRT);
         }
 
