@@ -1,4 +1,4 @@
-![Platform](https://img.shields.io/badge/platform-iOS16.0%2B%20%7C%20iPadOS16.0%2B-9cf)<br>
+![Platform](https://img.shields.io/badge/platform-iOS15.0%2B%20%7C%20iPadOS15.0%2B-9cf)<br>
 ![Xcode](https://img.shields.io/badge/Xcode-14.1-blue)
 ![Unity](https://img.shields.io/badge/Unity-2022.2.0f1-lightgrey)
 
