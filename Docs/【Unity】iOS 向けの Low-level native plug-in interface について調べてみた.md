@@ -1,16 +1,16 @@
 【Unity】iOS 向けの Low-level native plug-in interface を利用した Metal API へのアクセスについて調べてみた
 
-この記事は [Unity Advent Calendar 2022](https://qiita.com/advent-calendar/2022/unity) の記事です。
+この記事は [Unity Advent Calendar 2022](https://qiita.com/advent-calendar/2022/unity) の18日目の記事です。
 
 
-Unityには古くから [Low-level native plug-in interface](https://docs.unity3d.com/Manual/NativePluginInterface.html) と言う機能が存在しており、こちらを利用することでUnityが内部的に持っている各プラットフォーム向けの低レベルな GraphicsAPI にアクセスすることが出来るようになります。
+Unityには [Low-level native plug-in interface](https://docs.unity3d.com/Manual/NativePluginInterface.html) と言う機能が存在しており、こちらを利用することでUnityが内部的に持っている各プラットフォーム向けの低レベルな GraphicsAPI にアクセスすることが出来るようになります。
 
 https://docs.unity3d.com/Manual/NativePluginInterface.html
 
 じゃあ具体的にこれで何が出来るのか？と言うと、例えば今回話す iOS 向けの場合には「**Unityが持つ`MTLCommandEncoder`をフックして追加で描画命令を挟んだり、若しくはこちらを終了させて自身で追加の`MTLCommandEncoder`を追加する**」と言ったことが行えるようになります。
 
 
-実装例としてはUnity公式のリポジトリにてサンプルプロジェクトが公開されてますが、今回はこちらを参考に同じ例を再実装する形で所々補足しつつ解説していければと思います。
+実装例としては Unity 公式のリポジトリにてサンプルプロジェクトが公開されてますが、今回はこちらを参考に同じ例を再実装する形で所々補足しつつ解説していければと思います。
 
 https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphics/MetalNativeRenderingPlugin
 
@@ -24,6 +24,7 @@ https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphic
 
 - **iOS向けの `Low-level native plug-in interface` の導入について**
     - レンダースレッドからの任意のメソッドを呼び出すには
+    - Swift で実装していくにあたっての補足
 - **公式サンプルをベースに実装内容の解説**
 
 あとは幾つかの用語についてはそのままだと長いので、以降は以下の省略表記で解説していきます。
@@ -68,7 +69,7 @@ https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples
 記事を読むにあたっては以下の予備知識を必要とします。
 
 - Unity 及び iOS向けのネイティブプラグインの実装知識
-- [Metal](https://developer.apple.com/jp/metal/)の基礎知識
+- [Metal](https://developer.apple.com/jp/metal/) の基礎知識
 
 この記事中では詳細までは解説しないので、別途資料を見てキャッチアップを済ませておくところまでを前提に書いていきます。
 
@@ -87,16 +88,18 @@ https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples
 導入まで済んだら **Unity が持つ低レベルな GraphicsAPI へアクセスするためのインターフェースが手に入っている**ので、次にこちらを用いるための「レンダースレッドから任意のメソッドを呼び出す方法」について解説します。
 
 :::note note
-今回のサンプルプロジェクトでは大凡のロジック周りはSwiftで実装してますが、これから解説する **`LLNPI` の初期化やイベントの登録周りについてはマクロ周りが絡む都合上、ObjC で実装してます。**
+今回のサンプルプロジェクトでは大凡のロジック周りはSwiftで実装してますが、これから解説する **`LLNPI` の初期化やイベントの登録周りについてはマクロ周りが絡む都合上、ObjC で実装してます。** [^1]
 
-※ ObjC はなるべく最低限の範囲で済むように実装してますが、もし Swift だけで全て解決可能な手法があったら、コメントや編集コメントなどで教えていただけると幸いです... :bow: 
+他にも **Swift で実装をしていくにあたっては幾つか追加で設定が必要となってくる**ので、こちらについては「[Swiftで実装していくにあたっての補足](#swiftで実装していくにあたっての補足)」の章にて解説します。
 :::
+
+[^1]: ObjC はなるべく最低限の範囲で済むように実装してますが、もし Swift だけで完結可能な手法があったら、コメントや編集リクエストなどで教えていただけると幸いです...
 
 ## インターフェースの実装と登録
 
 `LLNPI` は「インターフェース」と名前が付いている通り、**Unityが事前に用意してくれている仕組みをネイティブプラグインとして実装する**ことで、その機能郡にアクセスする事ができるようになります。
 
-もう少し具体的に言うと、**ネイティブプラグイン側で `UnityPluginLoad` と `UnityPluginUnload` と言う関数を実装することでUnityが自動でこちらの関数を呼び出し、更にここから今回の肝である GraphicsAPI へアクセスするためのインターフェースを受け取る**ことができます。　
+もう少し具体的に言うと、**ネイティブプラグイン側で `UnityPluginLoad` と `UnityPluginUnload` と言う関数を実装することで Unity が自動でこちらの関数を呼び出し、更にここから今回の肝である GraphicsAPI へアクセスするためのインターフェースを受け取る**ことができます。　
 
 :::note warn
 「Unityが自動でこちらの関数を呼び出してくれる」と書きましたが、**iOSの場合には少し語弊があり、正確に言うと更に追加の実装を行わなければ呼び出されません。**
@@ -417,7 +420,7 @@ https://docs.unity3d.com/ScriptReference/GL.IssuePluginEvent.html
 
 これだけだと少し分かりづらいかもなので、実装例と併せて解説していきます。
 
-### ◆ C# 側でレンダースレッドから呼び出したいメソッドをコール
+### ◇ C# 側でレンダースレッドから呼び出したいメソッドをコール
 
 先ずはC#のコードを載せます。
 
@@ -475,7 +478,7 @@ sealed class Sample : MonoBehaviour
 :::
 
 
-### ◆ ネイティブコード側の実装
+### ◇ ネイティブコード側の実装
 
 C#側で `GL.IssuePluginEvent` を呼び出すと、第一引数に渡している `getRenderEventFunc` が P/Invoke 経由で呼び出され、**更にそこで返している関数ポインタの先である `OnRenderEvent(int eventID)` がレンダースレッドから呼び出されます。**
 
@@ -483,7 +486,7 @@ C#側で `GL.IssuePluginEvent` を呼び出すと、第一引数に渡してい�
 
 ```objc
 // C# 側にある `enum EventType` と同じ定義を用意
-enum EventID {
+enum EventType {
     RenderMethod1 = 0,
     RenderMethod2,
 };
@@ -510,6 +513,8 @@ static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
 
 `eventType` 自体は int型 ではあるものの、今回のように互いに enum型 で定義しておくと可読性的にも分かりやすくなるかもなのでオススメです。
 
+
+## Swiftで実装していくにあたっての補足
 
 
 
