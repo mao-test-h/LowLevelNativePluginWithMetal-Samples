@@ -15,8 +15,8 @@ func onUnityGfxDeviceEventInitialize() {
 
 /// Unity側から GL.IssuePluginEvent を呼ぶとレンダリングスレッドから呼び出されるメソッド
 @_cdecl("onRenderEvent")
-func onRenderEvent(eventId: Int32) {
-    MetalPlugin.shared.onRenderEvent(eventId: eventId)
+func onRenderEvent(eventID: Int32) {
+    MetalPlugin.shared.onRenderEvent(eventType: eventID)
 }
 
 // P/Invoke

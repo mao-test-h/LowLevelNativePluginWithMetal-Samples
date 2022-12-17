@@ -4,7 +4,7 @@ import Metal
 final class MetalPlugin {
     static var shared: MetalPlugin! = nil
 
-    private enum EventId: Int32 {
+    private enum EventType: Int32 {
         case extraDrawCall = 0
         case captureRT = 1
     }
@@ -86,8 +86,8 @@ final class MetalPlugin {
         vertexDesc.layouts[0] = vertexBufferLayoutDesc
     }
 
-    func onRenderEvent(eventId: Int32) {
-        switch EventId(rawValue: eventId)! {
+    func onRenderEvent(eventType: Int32) {
+        switch EventType(rawValue: eventType)! {
         case .extraDrawCall:
             extraDrawCall()
             break
