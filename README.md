@@ -4,13 +4,10 @@
 
 # LowLevelNativePluginWithMetal-Samples
 
-iOS向けのLow-level native plug-in interfaceを用いたMetal拡張のサンプル。
+Unity iOS向けの`Low-level native plug-in interface`を用いたMetalAPIの呼び出しサンプル。<br>
+技術詳細については以下の記事を参照してください。<br>
 
-> **Note**<br>
-> ここでやっていることの詳細な技術解説については[Unity Advent Calendar 2022](https://qiita.com/advent-calendar/2022/unity)にて記述予定。<br>
-> (リポジトリは勿体ぶってプライベートにするほどでも無いので先行公開してます)<br>
-> 完成してきたら諸々追記していきます。
-
+- [【Unity】iOS 向けの Low-level native plug-in interface を利用した Metal API へのアクセスについて調べてみた](https://qiita.com/mao_/items/e635705ac9860cb750f8)
 
 # LICENSES
 
