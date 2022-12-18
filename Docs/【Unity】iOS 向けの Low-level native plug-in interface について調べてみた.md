@@ -7,7 +7,7 @@ Unityには [Low-level native plug-in interface](https://docs.unity3d.com/Manual
 
 https://docs.unity3d.com/Manual/NativePluginInterface.html
 
-じゃあ具体的にこれで何が出来るのか？と言うと、例えば今回話す iOS 向けの場合には「**Unityが持つ`MTLCommandEncoder`をフックして追加で描画命令を挟んだり、若しくはこちらを終了させて自身で追加の`MTLCommandEncoder`を追加する**」と言ったことが行えるようになります。
+じゃあ具体的にこれで何が出来るのか？と言うと、例えば今回話す iOS 向けの場合には「**Unityが持つ`MTLCommandEncoder`をフックして追加で描画命令を挟んだり、若しくはこちらを終了させて自身で`MTLCommandEncoder`を追加する**」と言ったことが行えるようになります。
 
 
 実装例としては Unity 公式のリポジトリにてサンプルプロジェクトが公開されてますが、今回はこちらを参考に同じ例を再実装する形で所々補足しつつ解説していければと思います。
@@ -23,7 +23,7 @@ https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphic
 この記事では先程挙げた[公式のサンプルプロジェクト](https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphics/MetalNativeRenderingPlugin)をベースに以下のトピックについて順に解説していければと思います。
 
 - **iOS向けの `Low-level native plug-in interface` の導入について**
-    - レンダースレッドからの任意のレンダリング関数を呼び出すには
+    - レンダースレッドからの任意のレンダリングメソッドを呼び出すには
     - Swift で実装していくにあたっての補足
 - **公式サンプルをベースに実装内容の解説**
 
@@ -83,9 +83,9 @@ https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples
 
 先ずはiOS環境にて `LLNPI` をどうやって導入するのか？について解説します。
 
-こちらのやり方の大凡は[公式ドキュメント](https://docs.unity3d.com/Manual/NativePluginInterface.html)の方にも書かれておりますが、**iOS向けで使う場合には幾つか別途対応する必要がある箇所もある**ので、そこらも補足しつつ解説していければと思います。
+やり方の大凡は[公式ドキュメント](https://docs.unity3d.com/Manual/NativePluginInterface.html)の方にも書かれておりますが、**iOS向けで使う場合には幾つか追加で別途対応を行う箇所が存在する**ので、そこらも補足しつつ解説していければと思います。
 
-導入まで済んだら **Unity が持つ低レベルな GraphicsAPI へアクセスするためのインターフェースが手に入っている**ので、次にこちらを用いるための「レンダースレッドから任意のレンダリング関数を呼び出す方法」について解説します。
+導入まで済んだら **Unity が持つ低レベルな GraphicsAPI へアクセスするためのインターフェースが手に入る**ので、次にこちらを用いるための「レンダースレッドから任意のレンダリングメソッドを呼び出す方法」について解説していきます。
 
 :::note note
 今回のサンプルプロジェクトでは大凡のロジック周りはSwiftで実装してますが、これから解説する **`LLNPI` の初期化やイベントの登録周りについてはマクロ周りが絡む都合上、ObjC で実装してます。** [^1]
@@ -95,9 +95,9 @@ https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples
 
 [^1]: ObjC はなるべく最低限の範囲で済むように実装してますが、もし Swift だけで完結可能な手法があったら、コメントや編集リクエストなどで教えていただけると幸いです...
 
-## インターフェースの実装と登録
+## インターフェースの登録
 
-`LLNPI` は「インターフェース」と名前が付いている通り、**Unityが事前に用意してくれている仕組みをネイティブプラグインとして実装する**ことで、その機能郡にアクセスする事ができるようになります。
+`LLNPI` は **Unity が事前に用意してくれている仕組みをネイティブプラグインとして実装する**ことで、低レベルな GraphicsAPI と言った機能郡にアクセスする事ができるようになります。
 
 もう少し具体的に言うと、**ネイティブプラグイン側で `UnityPluginLoad` と `UnityPluginUnload` と言う関数を実装することで Unity が自動でこちらの関数を呼び出し、更にここから今回の肝である GraphicsAPI へアクセスするためのインターフェースを受け取る**ことができます。　
 
@@ -110,7 +110,6 @@ https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples
 ### ◇ `UnityPluginLoad` と `UnityPluginUnload` の実装
 
 サンプルプロジェクトからコードを抜粋すると、`ObjC` 側で実装している以下の関数がUnityから自動で呼び出されるので、この関数を経由して以下のインターフェースを取得します。  
-(コード全体は[こちら](https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples/blob/main/UnityProjects/BuiltInRP/Assets/LLNPISample/Plugins/LLNPIWithMetal/Native/UnityPluginRegister.m))
 
 - `IUnityInterfaces`
     - こちらのインタフェース経由で次の物が取得可能
@@ -167,7 +166,7 @@ void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces
 }
 ```
 
-例えば `kUnityGfxDeviceEventInitialize` のタイミングで各種初期化処理を呼び出すと行ったことが可能になります。
+例えば 「`kUnityGfxDeviceEventInitialize` のタイミングで各種初期化処理を呼び出す」と言ったことが可能となり、サンプルプロジェクトではこのタイミングで `onUnityGfxDeviceEventInitialize` と言うプラグインの初期化関数を呼び出すようにしてます。
 
 ```objc:UnityPluginRegister.m
 // `g_Graphics->RegisterDeviceEventCallback` で登録する関数
@@ -178,11 +177,17 @@ static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType ev
             // `g_Graphics->GetRenderer()` からは実行しているプラットフォームの GraphicsAPIを取得可能
             // 今回は Metal 限定なのでassertを貼ってその旨を明示的にしている
             assert(g_Graphics->GetRenderer() == kUnityGfxRendererMetal);
+
             // TODO: 各種初期化処理など
+
+            // サンプルプロジェクトではここでプラグインの初期化関数を呼び出している
+            onUnityGfxDeviceEventInitialize();
             break;
         case kUnityGfxDeviceEventShutdown:
             assert(g_Graphics->GetRenderer() == kUnityGfxRendererMetal);
+
             // TODO: 各種破棄時の処理などを実装
+
             break;
         default:
             // ignore others
@@ -197,7 +202,7 @@ static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType ev
 ::: note
 **NOTE: `IUnityGraphics.h`とかはどこにあるのか？**
 
-`IUnityGraphics.h` と言ったコードは Unity が iOS ビルド時に出力する `xcodeproj` の中に含まれており、今回関連する以下のコード含めて `(ビルドの出力先)/Classes/Unity` 配下に実態があります。
+`IUnityGraphics.h` と言ったコードは Unity が iOS ビルド時に出力する `xcodeproj` の中に含まれており、今回関連する以下のソース含めて `(ビルドの出力先)/Classes/Unity` の下にファイルがあります。
  
 - `IUnityInterface.h`
 - `IUnityGraphics.h`
@@ -408,13 +413,13 @@ const char* AppControllerClassName = "UnityAppController";
 </div></details>
 
 
-## レンダースレッドからの任意のレンダリング関数を呼び出すには
+## レンダースレッドからの任意のレンダリングメソッドを呼び出すには
 
-ここまで準備できたら `IUnityGraphicsMetalV1` を用いて実際に Metal API を叩くレンダリング関数を実装するだけですが、これらの処理はレンダースレッドから呼び出す必要があります。
+ここまで準備できたら `IUnityGraphicsMetalV1` を用いて実際に Metal API を叩くレンダリングメソッドを実装するだけですが、これらの処理はレンダースレッドから呼び出す必要があります。
 
 Unity iOS は初期設定だと `Multithread Rendering` が有効になっており、この場合にはレンダリング関連の処理が `MonoBehaviour` などが実行されるメインスレッドとは **別のスレッド(レンダースレッド)で実行されることになります。**
 
-この状態でメインスレッドから描画関連の処理を呼び出すのは都合が悪いので、今回のようにレンダースレッド上で任意のレンダリングに関する処理を呼び出す際には `GL.IssuePlugimEvent` と言うAPIを経由して呼び出す必要があります。
+この状態でメインスレッドから描画関連の処理を呼び出すのは都合が悪いので、今回のようにレンダースレッド上で任意のレンダリングに関する処理を呼び出したい場合には `GL.IssuePlugimEvent` と言うAPIを経由して呼び出す必要があります。
 
 https://docs.unity3d.com/ScriptReference/GL.IssuePluginEvent.html
 
@@ -484,7 +489,7 @@ C#側で `GL.IssuePluginEvent` を呼び出すと、第一引数に渡してい�
 
 `OnRenderEvent` の引数には C# から渡した int型 の `eventType` が渡ってくるので、こちらを見る形でどのイベントが呼ばれたかを分岐してます。
 
-**あとは渡ってきたイベントを元に任意の関数を呼び出すことでレンダリング関数を実装していくことが可能です。**
+**あとは渡ってきたイベントを元に任意のレンダリングメソッドを呼び出すことで実装していくことが可能です。**
 
 ```objc
 // C# 側にある `enum EventType` と同じ定義を用意
@@ -504,16 +509,22 @@ UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API getRenderEventFun
 static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
     switch (eventID) {
         case RenderMethod1:
-            // C# から `CallRenderEventFunc(EventType.RenderMethod1)` が呼ばれたときに実行されるレンダリング関数を実装
+
+            // TODO: 
+            // C# から `CallRenderEventFunc(EventType.RenderMethod1)` が呼ばれたときに実行されるレンダリングメソッドを呼び出す      
+
             break;
         case RenderMethod2:
-            // C# から `CallRenderEventFunc(EventType.RenderMethod2)` が呼ばれたときに実行されるレンダリング関数を実装
+
+            // TODO:
+            // C# から `CallRenderEventFunc(EventType.RenderMethod2)` が呼ばれたときに実行されるレンダリングメソッドを呼び出す
+
             break;
     }
 }
 ```
 
-`eventType` 自体は int型 ではあるものの、今回のように互いに enum型 で定義しておくと可読性的にも分かりやすくなるかもなのでオススメです。
+`eventType` 自体は int型 ではあるものの、今回のように互いに enum型 で定義しておくと可読性的にも分かりやすくなるかと思われるのでオススメです。
 
 
 
@@ -524,17 +535,23 @@ static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
 
 ### ◇ `OnRenderEvent` を Swiftに移行する
 
-ObjC にある以下の `OnRenderEvent` は Swiftに移行することが可能です。
+ObjC にある以下の `OnRenderEvent` は Swift に移行することが可能です。
 
 ```swift
 // Unity側で `GL.IssuePluginEvent` を呼ぶとレンダリングスレッドから呼ばれる
 static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
     switch (eventID) {
         case RenderMethod1:
-            // C# から `CallRenderEventFunc(EventType.RenderMethod1)` が呼ばれたときに実行されるレンダリング関数を実装
+
+            // TODO: 
+            // C# から `CallRenderEventFunc(EventType.RenderMethod1)` が呼ばれたときに実行されるレンダリングメソッドを呼び出す      
+
             break;
         case RenderMethod2:
-            // C# から `CallRenderEventFunc(EventType.RenderMethod2)` が呼ばれたときに実行されるレンダリング関数を実装
+
+            // TODO:
+            // C# から `CallRenderEventFunc(EventType.RenderMethod2)` が呼ばれたときに実行されるレンダリングメソッドを呼び出す
+
             break;
     }
 }
@@ -765,9 +782,8 @@ namespace LLNPISample.Plugins.LLNPIWithMetal.Editor
 
 </div></details>
 
-
-:::note warn
-上記の例では `UnityFramework.h` を `[PostProcessBuild]` のタイミングで**事前に編集したソースコードと差し替える**と言う**準黒魔術チックな魔法**で問題を解決してますが、`UnityFramework.h` 含めた Unity が iOS ビルドで出力するコード全般は、 **Unity のバージョンアップによって内容が暗黙的に変わる可能性があるため、その点だけ念頭に置いておく必要があります。**
+:::note alert
+上記の例では `UnityFramework.h` を `[PostProcessBuild]` のタイミングで**事前に編集したソースコードと差し替える**と言う**ちょっとした黒魔術**を詠唱することでで問題を解決してますが、`UnityFramework.h` を含めた Unity が iOS ビルドで出力するコード全般は、 **Unity のバージョンアップによって内容が暗黙的に変わる可能性があるため、その点だけ念頭に置いておく必要があります。**
 (例えば Unity のバージョンを上げた際に差し替え元のコードに変更が走っていると、差し替えた際にコードが古くてエラーが起こる可能性がある)
 :::
 
@@ -780,4 +796,5 @@ namespace LLNPISample.Plugins.LLNPIWithMetal.Editor
 # 参考/関連リンク
 
 - [Low-level native plug-in interface](https://docs.unity3d.com/Manual/NativePluginInterface.html)
+
 - [FrameworkでSwiftとObjective-C混ぜるのはやばい](https://qiita.com/fr0g_fr0g/items/82789af60b27ae19b263)
