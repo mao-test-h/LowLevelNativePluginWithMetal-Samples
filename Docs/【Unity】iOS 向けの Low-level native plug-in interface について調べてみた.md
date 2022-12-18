@@ -1552,11 +1552,29 @@ typedef unsigned int UnityTextureID;
 
 # 次回予告
 
-- URPでの導入
-- MetalFX
+ここまで長々と書いてきましたが、**本来の目的は冒頭にも記した通り [MetalFX](https://developer.apple.com/documentation/metalfx) と言う アップスケーリング技術を Unity 上で適用してみるのが本来の目的です。**
+
+こちらについてはフィジビリティ的なところまでは確認が出来ているので進展があり次第に、また解説記事を書こうと思います。
+
+<blockquote class="twitter-tweet"><p lang="ja" dir="ltr">Unityの`Low-level native plug-in interface`を用いてBuilt In-RenderPipeline向けにMetalFXを組み込んでみたところ、結論から言えば上手く行かずに失敗したが...GPUDebuggerを見るに割と光明が見えてきた気がしなくもない。<br>※MetalFX → 今年のWWDCで発表があったアップスケーリング技術 <a href="https://t.co/V1jyr5miE7">pic.twitter.com/V1jyr5miE7</a></p>&mdash; mao🐑 (@TEST_H_) <a href="https://twitter.com/TEST_H_/status/1601796969445224448?ref_src=twsrc%5Etfw">December 11, 2022</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
+
+他にも**現状だと `Build-in RenderPipeline` が前提となってしまっているので、** `URP` で導入できないかも検証していきたいところ...。
+(一応は [CommandBuffer](https://docs.unity3d.com/ScriptReference/Rendering.CommandBuffer.html) にも [CommandBuffer.IssuePluginEvent](https://docs.unity3d.com/ScriptReference/Rendering.CommandBuffer.IssuePluginEvent.html) と言うAPIが生えているので、出来なくは無さそう？と予想...)
+
+
+
 
 # 参考/関連リンク
 
-- [Low-level native plug-in interface](https://docs.unity3d.com/Manual/NativePluginInterface.html)
+- **Unity**
+    - [Low-level native plug-in interface](https://docs.unity3d.com/Manual/NativePluginInterface.html)
+    - [Unity-Technologies/iOSNativeCodeSamples](https://github.com/Unity-Technologies/iOSNativeCodeSamples)
+        - [Using Unity Low-level Native Plugin Interface with Metal](https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphics/MetalNativeRenderingPlugin)
+    - 
+- **参考記事**
+    - [ Unity Androidのネイティブプラグイン（C++）でOpenGLのテクスチャデータをNativeArrayにコピーする](https://edom18.hateblo.jp/entry/2021/11/06/200037)
+    - [Unity の Low-level Native Plugin Interface を調べてみた](https://tips.hecomi.com/entry/2014/01/19/201537)
+    - [FrameworkでSwiftとObjective-C混ぜるのはやばい](https://qiita.com/fr0g_fr0g/items/82789af60b27ae19b263)
 
-- [FrameworkでSwiftとObjective-C混ぜるのはやばい](https://qiita.com/fr0g_fr0g/items/82789af60b27ae19b263)
+
+
