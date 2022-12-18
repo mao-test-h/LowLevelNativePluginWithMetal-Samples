@@ -1074,15 +1074,478 @@ func onUnityGfxDeviceEventInitialize() {
 :::
 
 
+### ◇ `ExtraDrawCall` の実装
+
+> - `ExtraDrawCall`
+>     - 既存の描画をフックして描画を追加で差し込む例
+>     - `OnPostRender`のタイミングで呼び出す
+>     - 内容的には既存のレンダリングの上に赤い矩形を描画するだけ
+
+こちらの実装解説に入ります。
+コード全体は以下を御覧ください。
+
+<details><summary>コード全体 (クリックで展開)</summary><div>
+
+```swift:MetalPlugin.swift
+    // MARK:- ExtraDrawCall
+
+    /// Unityが持つレンダーターゲットに対して、追加で描画イベントの呼び出しを行う
+    ///
+    /// NOTE:
+    /// - ここでは現在のレンダリングをフックし、単色の矩形を追加描画する例
+    private func extraDrawCall() {
+        // 現在のレンダリング情報を取得
+        guard let desc = unityMetal.CurrentRenderPassDescriptor(),
+              let rt: MTLTexture = desc.colorAttachments[0].texture,
+              let cmdEncoder: MTLCommandEncoder = unityMetal.CurrentCommandEncoder()
+        else {
+            preconditionFailure("レンダリング情報の取得に失敗")
+        }
+
+        // 現在のレンダーパスの設定を取得し、レンダーターゲットの形式に変更があったら PipelineState を再生成する
+        if (rt.pixelFormat != extraDrawCallPixelFormat || rt.sampleCount != extraDrawCallSampleCount) {
+            extraDrawCallPixelFormat = rt.pixelFormat
+            extraDrawCallSampleCount = rt.sampleCount
+            extraDrawCallPipelineState = createCommonRenderPipeline(
+                label: "ExtraDrawCall",
+                fragmentShader: fragmentShaderColor,
+                format: extraDrawCallPixelFormat,
+                sampleCount: extraDrawCallSampleCount)
+        }
+
+        guard let extraDrawCallPipelineState = extraDrawCallPipelineState,
+              let renderCmdEncoder = cmdEncoder as? MTLRenderCommandEncoder
+        else {
+            preconditionFailure("PipelineState の取得に失敗、若しくはCommandEncoderの形式が不正")
+        }
+
+        renderCmdEncoder.setRenderPipelineState(extraDrawCallPipelineState)
+        renderCmdEncoder.setCullMode(.none)
+        renderCmdEncoder.setVertexBuffer(verticesBuffer, offset: 0, index: 0)
+        renderCmdEncoder.drawIndexedPrimitives(
+            type: .triangle,
+            indexCount: 6,
+            indexType: .uint16,
+            indexBuffer: indicesBuffer,
+            indexBufferOffset: 0)
+    }
+```
+
+</div></details>
+
+#### ◆ `IUnityGraphicsMetalV1` から現在のレンダリング情報を取得
+
+こちらは `IUnityGraphicsMetalV1` から `CurrentRenderPassDescriptor()` と `CurrentCommandEncoder()` を呼び出すことで現在のレンダリング情報を取得してます。
+
+```swift:MetalPlugin.swift
+        // 現在のレンダリング情報を取得
+        guard let desc = unityMetal.CurrentRenderPassDescriptor(),
+              let rt: MTLTexture = desc.colorAttachments[0].texture,
+              let cmdEncoder: MTLCommandEncoder = unityMetal.CurrentCommandEncoder()
+        else {
+            preconditionFailure("レンダリング情報の取得に失敗")
+        }
+```
+
+参考程度に `IUnityGraphicsMetal.h` にある関数宣言の方も再度引用しておきます。
+
+```objc:IUnityGraphicsMetal.h
+    // you want to use current in-flight MTLCommandEncoder (NB: it might be nil)
+    id<MTLCommandEncoder>(UNITY_INTERFACE_API * CurrentCommandEncoder)();
+
+    // returns MTLRenderPassDescriptor used to create current MTLCommandEncoder
+    MTLRenderPassDescriptor* (UNITY_INTERFACE_API * CurrentRenderPassDescriptor)();
+```
+
+#### ◆ `MTLRenderPipelineState` の生成
+
+今回の例ではレンダーターゲットの変更に対応できるよう、都度変更を検知して生成するようにしてます。
+とは言え、もしレンダーターゲットが固定であれば初期化時に生成して使い回すようにするのが正解かもしれません。
+
+```swift:MetalPlugin.swift
+        // 現在のレンダーパスの設定を取得し、レンダーターゲットの形式に変更があったら PipelineState を再生成する
+        if (rt.pixelFormat != extraDrawCallPixelFormat || rt.sampleCount != extraDrawCallSampleCount) {
+            extraDrawCallPixelFormat = rt.pixelFormat
+            extraDrawCallSampleCount = rt.sampleCount
+            extraDrawCallPipelineState = createCommonRenderPipeline(
+                label: "ExtraDrawCall",
+                fragmentShader: fragmentShaderColor,
+                format: extraDrawCallPixelFormat,
+                sampleCount: extraDrawCallSampleCount)
+        }
+```
+
+#### ◆ `MTLRenderCommandEncoder` を取得して追加でプリミティブをレンダリング
+
+`MTLRenderPipelineState` の生成まで完了したら、それを用いた描画処理を足していきます。
+
+`IUnityGraphicsMetalV1` にある `CurrentCommandEncoder` から得られるエンコーダーを `MTLRenderCommandEncoder` にキャストし、**イニシャライザで事前に生成したシェーダーや頂点情報などを用いて矩形のプリミティブを描画します。**
+
+```swift:MetalPlugin.swift
+        guard let extraDrawCallPipelineState = extraDrawCallPipelineState,
+              let renderCmdEncoder = cmdEncoder as? MTLRenderCommandEncoder
+        else {
+            preconditionFailure("PipelineState の取得に失敗、若しくはCommandEncoderの形式が不正")
+        }
+
+        renderCmdEncoder.setRenderPipelineState(extraDrawCallPipelineState)
+        renderCmdEncoder.setCullMode(.none)
+        renderCmdEncoder.setVertexBuffer(verticesBuffer, offset: 0, index: 0)
+        renderCmdEncoder.drawIndexedPrimitives(
+            type: .triangle,
+            indexCount: 6,
+            indexType: .uint16,
+            indexBuffer: indicesBuffer,
+            indexBufferOffset: 0)
+```
+
+正常に行けば恐らくは `Pipeline State` に `ExtraDrawCall` が追加され、以下のような表示になっているはずです。
+
+![スクリーンショット 2022-12-18 21.13.41.png](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/80207/9fc4a73a-7f35-5f87-09c7-64849c99ec86.png)
 
 
 
 
+### ◇ `CopyRTtoRT` の実装
+
+> - `CopyRTtoRT`
+>     - Unityのエンコーダーの終了を待った後に独自のエンコーダーを実行する例
+>     - `WaitForEndOfFrame` の後のタイミング(レンダリングが完了するタイミング)で呼び出す
+>     - 内容的には引数で渡した `src` を内部的なテクスチャ(バッファ)にコピーし、それを `dst` で渡されたバッファの上に描画する
+
+最後にこちらの実装解説に入ります。
+コード全体は以下を御覧ください。
+
+<details><summary>コード全体 (クリックで展開)</summary><div>
+
+```swift:MetalPlugin.swift
+    // MARK:- CaptureRT
+
+    /// `src`を内部的なテクスチャにコピーし、それを`dst`上の矩形に対し描画する
+    ///
+    /// NOTE:
+    /// - Unityが実行するエンコーダーを完了させ、その後に独自のエンコーダーを実行する幾つかの例
+    ///     - 1. `src` を `rtCopy` にコピー
+    ///     - 2. `dst` 上に矩形を描画し、フラグメントシェーダーで `rtCopy` を描き込む
+    private func captureRT() {
+        if (copySrc == nil || copyDst == nil) {
+            print("コピー対象のレンダーターゲットがまだ設定されていない");
+            return
+        }
+
+        guard let device: MTLDevice = unityMetal.MetalDevice() else {
+            preconditionFailure("MTLDeviceが見つからない")
+        }
+
+        // 独自のエンコーダーを作成する前に、Unityが持つエンコーダーを先に終了させる必要がある。
+        // NOTE: ただし、これを行う場合にはUnityに制御を戻す前に自前で走らせたエンコーダーは終了させておく必要がある。
+        unityMetal.EndCurrentCommandEncoder()
+
+        // コピー対象のテクスチャを取得
+        guard let copySrc = copySrc,
+              let srcTexture: MTLTexture = getColorTexture(from: copySrc)
+        else {
+            preconditionFailure("コピー対象のテクスチャの取得に失敗")
+        }
+
+        // 必要に応じて `src` のコピー先を生成
+        if rtCopy == nil ||
+               rtCopy!.width != srcTexture.width ||
+               rtCopy!.height != srcTexture.height ||
+               rtCopy!.pixelFormat != srcTexture.pixelFormat {
+
+            let texDesc = MTLTextureDescriptor.texture2DDescriptor(
+                pixelFormat: srcTexture.pixelFormat,
+                width: srcTexture.width,
+                height: srcTexture.height,
+                mipmapped: false)
+
+            self.rtCopy = device.makeTexture(descriptor: texDesc)
+        }
+
+        guard let rtCopy = rtCopy else {
+            preconditionFailure("コピー対象のテクスチャの生成に失敗している")
+        }
+
+        // BlitCommandEncoder を利用して `src` を `rtCopy` にコピーする
+        if let cmdBuffer = unityMetal.CurrentCommandBuffer(),
+           let blit = cmdBuffer.makeBlitCommandEncoder() {
+            blit.copy(
+                from: srcTexture,
+                sourceSlice: 0,
+                sourceLevel: 0,
+                sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+                sourceSize: MTLSize(width: srcTexture.width, height: srcTexture.height, depth: 1),
+                to: rtCopy,
+                destinationSlice: 0,
+                destinationLevel: 0,
+                destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+            blit.endEncoding()
+        } else {
+            preconditionFailure("BlitCommandEncoder の実行に失敗")
+        }
+
+        // 書き込み先のテクスチャを取得
+        guard let copyDst = copyDst,
+              let dstTexture: MTLTexture = getColorTexture(from: copyDst)
+        else {
+            preconditionFailure("書き込み先のテクスチャの取得に失敗")
+        }
+
+        // NOTE: AAは既に解決済みであることを想定
+        let colorAttachment = MTLRenderPassColorAttachmentDescriptor()
+        colorAttachment.texture = dstTexture
+        colorAttachment.loadAction = .load
+        colorAttachment.storeAction = .store
+
+        let desc = MTLRenderPassDescriptor()
+        desc.colorAttachments[0] = colorAttachment
+
+        // 書き込み先の設定を取得し、レンダーターゲットの形式に変更があったら PipelineState を再生成する
+        if (dstTexture.pixelFormat != rtCopyPixelFormat || dstTexture.sampleCount != rtCopySampleCount) {
+            rtCopyPixelFormat = dstTexture.pixelFormat
+            rtCopySampleCount = dstTexture.sampleCount
+            rtCopyPipelineState = createCommonRenderPipeline(
+                label: "CaptureRT",
+                fragmentShader: fragmentShaderTexture,
+                format: rtCopyPixelFormat,
+                sampleCount: rtCopySampleCount)
+        }
+
+        // RenderCommandEncoder を利用して `dst` 上に矩形を描画し、フラグメントシェーダーで`rtCopy`を描き込む
+        if let cmdBuffer = unityMetal.CurrentCommandBuffer(),
+           let cmd = cmdBuffer.makeRenderCommandEncoder(descriptor: desc),
+           let rtCopyPipelineState = rtCopyPipelineState {
+            cmd.setRenderPipelineState(rtCopyPipelineState)
+            cmd.setCullMode(.none)
+            cmd.setVertexBuffer(verticesBuffer, offset: 0, index: 0)
+            cmd.setFragmentTexture(rtCopy, index: 0)
+            cmd.drawIndexedPrimitives(
+                type: .triangle,
+                indexCount: 6,
+                indexType: .uint16,
+                indexBuffer: indicesBuffer,
+                indexBufferOffset: 0)
+            cmd.endEncoding()
+        } else {
+            preconditionFailure("RenderCommandEncoder の実行に失敗")
+        }
+    }
+
+    /// UnityRenderBuffer から MTLTexture を取得
+    ///
+    /// - Parameter renderBuffer: 対象の UnityRenderBuffer
+    /// - Returns: 取得に成功した MTLTexture を返す (失敗時はnil)
+    ///
+    /// NOTE:
+    /// - 渡すバッファの条件によって呼び出す関数が変わるので分岐を挟んでいる
+    /// - 例えば前者の `AAResolvedTextureFromRenderBuffer` はAAが掛かっている必要がある
+    ///     - 非AAのバッファやDepth形式のバッファを渡すとnilが返ってくるとのこと (詳しくは関数のコメント参照)
+    private func getColorTexture(from renderBuffer: UnityRenderBuffer) -> MTLTexture? {
+        if let texture = unityMetal.AAResolvedTextureFromRenderBuffer(renderBuffer) {
+            return texture
+        } else {
+            if let texture = unityMetal.TextureFromRenderBuffer(renderBuffer) {
+                return texture
+            } else {
+                return nil
+            }
+        }
+    }
+```
+
+</div></details>
+
+#### ◆ 先ずは Unity が持つエンコーダーを先に終了させる
+
+コメントに書いてあるとおりですが、これから独自のエンコーダーを走らせていくので、その前に `EndCurrentCommandEncoder` を呼び出すことで Unity が持つエンコーダーを先に終了させておきます。
+
+```swift:MetalPlugin.swift
+        // 独自のエンコーダーを作成する前に、Unityが持つエンコーダーを先に終了させる必要がある。
+        // NOTE: ただし、これを行う場合にはUnityに制御を戻す前に自前で走らせたエンコーダーは終了させておく必要がある。
+        unityMetal.EndCurrentCommandEncoder()
+
+```
+
+こちらも参考程度に `IUnityGraphicsMetal.h` にある関数宣言の方も再度引用しておきます。
+
+```objc:IUnityGraphicsMetal.h
+    // or you might want to create your own encoder.
+    // In that case you should end unity's encoder before creating your own and end yours before returning control to unity
+    void(UNITY_INTERFACE_API * EndCurrentCommandEncoder)();
+```
+
+#### ◆ P/Invoke で `RenderBuffer` のポインタを Unity からネイティブに渡して保持
+
+C# のコードに戻りますが、ここでは `DoCopyRT` を呼び出す際に `RenderBuffer` のポインタを P/Invoke でネイティブに渡してます。
+
+```csharp:NativeProxyForIOS.cs
+public sealed class NativeProxyForIOS : INativeProxy
+{
+    // (中略)
+
+    void INativeProxy.DoCopyRT(RenderBuffer src, RenderBuffer dst)
+    {
+        [DllImport("__Internal", EntryPoint = "setRTCopyTargets")]
+        static extern void SetRTCopyTargets(IntPtr src, IntPtr dst);
+
+        SetRTCopyTargets(src.GetNativeRenderBufferPtr(), dst.GetNativeRenderBufferPtr());
+        CallRenderEventFunc(EventType.CopyRTtoRT);
+    }
+
+    // (中略)
+}
+```
+
+ここで渡されたポインタは Swift では以下のように受け取ることが出来るので、
+
+```swift:NativeCallProxy.swift
+// P/Invoke
+
+@_cdecl("setRTCopyTargets")
+func setRTCopyTargets(_ src: UnityRenderBuffer, _ dst: UnityRenderBuffer) {
+    MetalPlugin.shared.setRTCopyTargets(src, dst)
+}
+```
+
+それをフィールドに保持するようにします。
+
+```swift:MetalPlugin.swift
+    private var copySrc: UnityRenderBuffer? = nil
+    private var copyDst: UnityRenderBuffer? = nil
+
+    func setRTCopyTargets(_ src: UnityRenderBuffer, _ dst: UnityRenderBuffer) {
+        copySrc = src
+        copyDst = dst
+    }
+```
+
+:::note
+**NOTE: `UnityRenderBuffer` の型について**
+
+`UnityRenderBuffer` の定義を見ると分かりますが、実態としてはただの**構造体のポインタ**でしか無いので、 P/Invoke の引数として普通に渡してネイティブ側で受け取ることが可能です。
 
 
+```objc:IUnityInterface.h
+struct RenderSurfaceBase;
+typedef struct RenderSurfaceBase* UnityRenderBuffer;
+typedef unsigned int UnityTextureID;
+```
+
+※ ちなみに「構造体のポインタ」である旨については [RenderBuffer.GetNativeRenderBufferPtr](https://docs.unity3d.com/ScriptReference/RenderBuffer.GetNativeRenderBufferPtr.html) のドキュメントの方にも記載されてます。
+:::
 
 
+#### ◆ `MTLBlitCommandEncoder` を利用して `src` をコピー
 
+先ずは `copySrc` に保持している `RenderBuffer` を元に、 `getColorTexture` と言うメソッドから `MTLTexture` を取得します。
+
+```swift:MetalPlugin.swift
+    // コピー対象のテクスチャを取得
+    guard let copySrc = self.copySrc,
+          let srcTexture: MTLTexture = getColorTexture(from: copySrc)
+    else {
+        preconditionFailure("コピー対象のテクスチャの取得に失敗")
+    }
+```
+
+以下の処理では取得した `srcTexture: MTLTexture` を元に `rtCopy` と言う `MTLTexture` を生成し、 **`BlitCommandEncoder` を走らせることで `srcTexture` の内容を `rtCopy` に書き込みます。**
+
+```swift:MetalPlugin.swift
+    // 必要に応じて `src` のコピー先を生成
+    if self.rtCopy == nil ||
+           self.rtCopy!.width != srcTexture.width ||
+           self.rtCopy!.height != srcTexture.height ||
+           self.rtCopy!.pixelFormat != srcTexture.pixelFormat {
+
+        let texDesc = MTLTextureDescriptor.texture2DDescriptor(
+            pixelFormat: srcTexture.pixelFormat,
+            width: srcTexture.width,
+            height: srcTexture.height,
+            mipmapped: false)
+
+        self.rtCopy = device.makeTexture(descriptor: texDesc)
+    }
+
+    guard let rtCopy = self.rtCopy else {
+        preconditionFailure("コピー対象のテクスチャの生成に失敗している")
+    }
+
+    // BlitCommandEncoder を利用して `src` を `rtCopy` にコピーする
+    if let cmdBuffer = unityMetal.CurrentCommandBuffer(),
+       let blit = cmdBuffer.makeBlitCommandEncoder() {
+        blit.copy(
+            from: srcTexture,
+            sourceSlice: 0,
+            sourceLevel: 0,
+            sourceOrigin: MTLOrigin(x: 0, y: 0, z: 0),
+            sourceSize: MTLSize(width: srcTexture.width, height: srcTexture.height, depth: 1),
+            to: rtCopy,
+            destinationSlice: 0,
+            destinationLevel: 0,
+            destinationOrigin: MTLOrigin(x: 0, y: 0, z: 0))
+        blit.endEncoding()
+    } else {
+        preconditionFailure("BlitCommandEncoder の実行に失敗")
+    }
+```
+
+#### ◆ `RenderCommandEncoder` を利用して `dst` にコピーした内容を矩形として描き込む
+
+こちらではコピー済みの `rtCopy` の内容を `RenderCommandEncoder` を用いて `dst` に書き込んでます。
+詳細についてはコメントに記載しているのでこちらを御覧ください。
+
+```swift:MetalPlugin.swift
+    // 書き込み先のテクスチャを取得
+    guard let copyDst = copyDst,
+          let dstTexture: MTLTexture = getColorTexture(from: copyDst)
+    else {
+        preconditionFailure("書き込み先のテクスチャの取得に失敗")
+    }
+
+    // NOTE: AAは既に解決済みであることを想定
+    let colorAttachment = MTLRenderPassColorAttachmentDescriptor()
+    colorAttachment.texture = dstTexture
+    colorAttachment.loadAction = .load
+    colorAttachment.storeAction = .store
+
+    let desc = MTLRenderPassDescriptor()
+    desc.colorAttachments[0] = colorAttachment
+
+    // 書き込み先の設定を取得し、レンダーターゲットの形式に変更があったら PipelineState を再生成する
+    if (dstTexture.pixelFormat != rtCopyPixelFormat || dstTexture.sampleCount != rtCopySampleCount) {
+        rtCopyPixelFormat = dstTexture.pixelFormat
+        rtCopySampleCount = dstTexture.sampleCount
+        rtCopyPipelineState = createCommonRenderPipeline(
+            label: "CaptureRT",
+            fragmentShader: fragmentShaderTexture,
+            format: rtCopyPixelFormat,
+            sampleCount: rtCopySampleCount)
+    }
+
+    // RenderCommandEncoder を利用して `dst` 上に矩形を描画し、フラグメントシェーダーで`rtCopy`を描き込む
+    if let cmdBuffer = unityMetal.CurrentCommandBuffer(),
+       let cmd = cmdBuffer.makeRenderCommandEncoder(descriptor: desc),
+       let rtCopyPipelineState = rtCopyPipelineState {
+        cmd.setRenderPipelineState(rtCopyPipelineState)
+        cmd.setCullMode(.none)
+        cmd.setVertexBuffer(verticesBuffer, offset: 0, index: 0)
+        cmd.setFragmentTexture(rtCopy, index: 0)
+        cmd.drawIndexedPrimitives(
+            type: .triangle,
+            indexCount: 6,
+            indexType: .uint16,
+            indexBuffer: indicesBuffer,
+            indexBufferOffset: 0)
+        cmd.endEncoding()
+    } else {
+        preconditionFailure("RenderCommandEncoder の実行に失敗")
+    }
+```
+
+正常に行けば `Pipeline State` に `CaptureRT` が追加され、`ExtraDrawCall` と合わせて以下のような表示になっているはずです。
+
+![スクリーンショット 2022-12-18 21.47.37.png](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/80207/74d28c9b-6bb7-493f-b9a4-f02d5dace35c.png)
 
 
 
