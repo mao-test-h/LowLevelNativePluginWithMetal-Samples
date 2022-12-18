@@ -79,6 +79,8 @@ https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples
 
 
 
+
+
 # iOS向けの `LLNPI` の導入について
 
 先ずはiOS環境にて `LLNPI` をどうやって導入するのか？について解説します。
@@ -790,6 +792,299 @@ namespace LLNPISample.Plugins.LLNPIWithMetal.Editor
 上記の例では `UnityFramework.h` を `[PostProcessBuild]` のタイミングで**事前に編集したソースコードと差し替える**と言う**ちょっとした黒魔術**を詠唱することでで問題を解決してますが、`UnityFramework.h` を含めた Unity が iOS ビルドで出力するコード全般は、 **Unity のバージョンアップによって内容が暗黙的に変わる可能性があるため、その点だけ念頭に置いておく必要があります。**
 (例えば Unity のバージョンを上げた際に差し替え元のコードに変更が走っていると、差し替えた際にコードが古くてエラーが起こる可能性がある)
 :::
+
+
+
+
+
+# サンプルプロジェクトをベースに実装内容の解説
+
+ここからは今回自分の方で再実装したプロジェクトをベースに解説していきます。
+
+https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples
+
+先ずは Unity(C#) 側で何をやっているのか？だけ先にサラッと解説し、次にネイティブ側の実装詳細について解説していきます。
+
+
+## Unity 側の実装
+
+Unity 側では以下のようなCube2つが回転するだけのシーンを用意し、こちらのレンダリングをネイティブで加工できるようにしていきます。
+
+![20221218_190226.GIF](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/80207/3664ae1b-2493-0e6f-d1fd-4df75a3a5ad3.gif)
+
+### ◇ `Camera` にアタッチされたスクリプトを起点に `OnPostRender()` からレンダースレッド上で実行されるメソッドを呼び出す
+
+シーン上の `Camera` には以下の `Sample` をアタッチしており、**こちらから呼ばれる `OnPostRender()` を起点にレンダースレッド上で実行されるメソッドを呼び出していきます。**
+
+ちなみにネイティブコードの呼び出しは[こちらに記載している作法](https://qiita.com/mao_/items/15d05d25a99ab290fa50)に倣って `interface` で実装を分けてますが、 Editor 実行時に入る `NativeProxyForEditor` は基本的にはエラー回避用のダミーだと思ってしまって問題ありません。
+
+```csharp:Sample.cs
+[RequireComponent(typeof(Camera))]
+internal sealed class Sample : MonoBehaviour
+{
+    private Camera _targetCamera;
+    private INativeProxy _nativeProxy;
+
+    private void Awake()
+    {
+        TryGetComponent(out _targetCamera);
+        Assert.IsTrue(_targetCamera != null);
+
+#if UNITY_EDITOR
+        _nativeProxy = new NativeProxyForEditor();
+#elif UNITY_IOS
+        _nativeProxy = new NativeProxyForIOS();
+#endif
+    }
+
+    private void OnPostRender()
+    {
+        _nativeProxy.DoExtraDrawCall();
+        StartCoroutine(OnFrameEnd());
+    }
+
+    private IEnumerator OnFrameEnd()
+    {
+        yield return new WaitForEndOfFrame();
+
+        // Camera に targetTexture が存在するならそちらを使い、
+        // そうじゃない場合には `Display.main.colorBuffer`を使う
+        var srcRT = _targetCamera.targetTexture;
+        var src = srcRT ? srcRT.colorBuffer : Display.main.colorBuffer;
+        var dst = Display.main.colorBuffer;
+
+        // こちらのイベントはUnityが実行する全てのレンダリングが完了した後に呼び出す必要がある。
+        // (AAが関係している場合には特に重要であり、ネイティブ側でエンコーダーを終了することによってAAの解決が行われる)
+        _nativeProxy.DoCopyRT(src, dst);
+        yield return null;
+    }
+}
+```
+
+### ◇ ネイティブコードの呼び出し
+
+まず前提として今回の実装で「レンダースレッド上から呼び出す想定のメソッド」の紹介からしていきます。
+
+こちらは enum にて以下のように定義してます。
+
+- `ExtraDrawCall`
+    - 既存の描画をフックして描画を追加で差し込む例
+    - `OnPostRender`のタイミングで呼び出す
+    - 内容的には既存のレンダリングの上に赤い矩形を描画するだけ
+- `CopyRTtoRT`
+    - Unityのエンコーダーの終了を待った後に独自のエンコーダーを実行する例
+    - `WaitForEndOfFrame` の後のタイミング(レンダリングが完了するタイミング)で呼び出す
+    - 内容的には引数で渡した `src` を内部的なテクスチャ(バッファ)にコピーし、それを `dst` で渡されたバッファの上に描画する
+
+実装内容はどれも[公式サンプル](https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphics/MetalNativeRenderingPlugin)と同じものですが、大凡の内容は把握できるかと思い、そのまま採用してます。
+
+```csharp:NativeProxyForIOS.cs
+/// <summary>
+/// サンプルのレンダリングイベント
+/// </summary>
+private enum EventType
+{
+    /// <summary>
+    /// Unityが持つレンダーターゲットに対して、追加で描画イベントの呼び出しを行う
+    /// </summary>
+    /// <remarks>Unityが実行する既存の描画をフックし、追加の描画を行うサンプル</remarks>
+    ExtraDrawCall = 0,
+
+    /// <summary>
+    /// `src`を内部的なテクスチャにコピーし、それを`dst`上の矩形に対し描画する
+    /// </summary>
+    /// <remarks>独自のエンコーダーを実行する幾つかの例</remarks>
+    CopyRTtoRT,
+}
+```
+
+P/Invoke や [GL.IssuePluginEvent](https://docs.unity3d.com/ScriptReference/GL.IssuePluginEvent.html) 箇所は以下のようになってます。
+
+今回は iOS オンリーの例と言うのもあり、ネイティブ側には前の章でも軽く話した [RenderBuffer.GetNativeRenderBufferPtr](https://docs.unity3d.com/ScriptReference/RenderBuffer.GetNativeRenderBufferPtr.html) で得られるポインタを渡すようにしてます。
+
+
+```csharp:NativeProxyForIOS.cs
+public sealed class NativeProxyForIOS : INativeProxy
+{
+    void INativeProxy.DoExtraDrawCall()
+    {
+        CallRenderEventFunc(EventType.ExtraDrawCall);
+    }
+
+    void INativeProxy.DoCopyRT(RenderBuffer src, RenderBuffer dst)
+    {
+        [DllImport("__Internal", EntryPoint = "setRTCopyTargets")]
+        static extern void SetRTCopyTargets(IntPtr src, IntPtr dst);
+
+        SetRTCopyTargets(src.GetNativeRenderBufferPtr(), dst.GetNativeRenderBufferPtr());
+        CallRenderEventFunc(EventType.CopyRTtoRT);
+    }
+
+    private enum EventType { /* 中略 */ }
+
+    private static void CallRenderEventFunc(EventType eventType)
+    {
+        [DllImport("__Internal", EntryPoint = "getRenderEventFunc")]
+        static extern IntPtr GetRenderEventFunc();
+
+        GL.IssuePluginEvent(GetRenderEventFunc(), (int)eventType);
+    }
+}
+```
+
+## ネイティブ側の実装
+
+今回実装しているネイティブコードは以下のものがあります。
+
+- [UnityPluginRegister.m](https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples/blob/main/UnityProjects/BuiltInRP/Assets/LLNPISample/Plugins/LLNPIWithMetal/Native/UnityPluginRegister.m)
+    - 前の章で解説した `LLNPI` の周りの処理
+- [NativeCallProxy.swift](https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples/blob/main/UnityProjects/BuiltInRP/Assets/LLNPISample/Plugins/LLNPIWithMetal/Native/NativeCallProxy.swift)
+    - `LLNPI` 周りで呼び出される処理の一部や、 `LLNPI` に関わらない P/Invoke で呼び出される関数を定義
+- [MetalPlugin.swift](https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples/blob/main/UnityProjects/BuiltInRP/Assets/LLNPISample/Plugins/LLNPIWithMetal/Native/MetalPlugin.swift)
+    - 今回の実装のコアロジック
+- [MetalShader.swift](https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples/blob/main/UnityProjects/BuiltInRP/Assets/LLNPISample/Plugins/LLNPIWithMetal/Native/MetalShader.swift)
+    - シェーダーコード ( `Swift` のソースで持っている理由については後述)
+
+
+前者2つについては前の章を読んでいれば大凡何をやっているのかは把握できる内容かと思います。
+今回肝となるのはコアロジックを持つ `MetalPlugin.swift` の部分となるので、こちらを中心に解説していきます。
+
+### ◇ プラグインの初期化
+
+プラグインの初期化は `OnGraphicsDeviceEvent` から `kUnityGfxDeviceEventInitialize` を見る形で呼び出します。
+
+```objc:UnityPluginRegister.m
+// ここでは外部宣言だけ (実装は `NativeCallPloxy.swift` にある)
+extern void onUnityGfxDeviceEventInitialize();
+
+static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventType) {
+    switch (eventType) {
+        case kUnityGfxDeviceEventInitialize:
+            assert(g_Graphics->GetRenderer() == kUnityGfxRendererMetal);
+            
+            // Swift 側で実装されている初期化処理を呼び出し
+            onUnityGfxDeviceEventInitialize();
+            break;
+        case kUnityGfxDeviceEventShutdown:
+            assert(g_Graphics->GetRenderer() == kUnityGfxRendererMetal);
+            break;
+        default:
+            // ignore others
+            break;
+    }
+}
+```
+
+この時点で `IUnityGraphicsMetalV1` は手に入っているので、こちらを取得して `MetalPlugin` のイニシャライザに渡して初期化を完了させます。
+
+```swift:NativeCallPloxy.swift
+/// NOTE: `OnGraphicsDeviceEvent -> kUnityGfxDeviceEventInitialize`のタイミングで呼び出される
+@_cdecl("onUnityGfxDeviceEventInitialize")
+func onUnityGfxDeviceEventInitialize() {
+    let unityMetal = UnityGraphicsBridge.getUnityGraphicsMetalV1().pointee
+    MetalPlugin.shared = MetalPlugin(with: unityMetal)
+}
+```
+
+`MetalPlugin` のイニシャライザは長いので折りたたみますが、要約すると以下のことをやってます。
+
+- `IUnityGraphicsMetalV1` から `MTLDevice`　を取得して保持
+- シェーダーコードの読み込み
+- レンダリングメソッドで描画する矩形オブジェクトの頂点情報の生成
+
+<details><summary>イニシャライザのコード全体はこちら (クリックで展開)</summary><div>
+
+```swift:MetalPlugin.swift
+    init(with unityMetal: IUnityGraphicsMetalV1) {
+        self.unityMetal = unityMetal
+
+        guard let device: MTLDevice = unityMetal.MetalDevice() else {
+            preconditionFailure("MTLDeviceが見つからない")
+        }
+
+        do {
+            let library = try device.makeLibrary(source: Shader.shaderSrc, options: nil)
+            guard let vertexShader = library.makeFunction(name: "vprog"),
+                  let fragmentShaderColor = library.makeFunction(name: "fshader_color"),
+                  let fragmentShaderTexture = library.makeFunction(name: "fshader_tex")
+            else {
+                preconditionFailure("シェーダーの読み込みで失敗")
+            }
+
+            self.vertexShader = vertexShader
+            self.fragmentShaderColor = fragmentShaderColor
+            self.fragmentShaderTexture = fragmentShaderTexture
+        } catch let error {
+            preconditionFailure(error.localizedDescription)
+        }
+
+        // pos.x pos.y uv.x uv.y
+        let vertices: [Float] = [
+            -1.0, 0.0, 0.0, 0.0,
+            -1.0, -1.0, 0.0, 1.0,
+            0.0, -1.0, 1.0, 1.0,
+            0.0, 0.0, 1.0, 0.0,
+        ]
+        let indices: [UInt16] = [0, 1, 2, 2, 3, 0]
+        let verticesLength = vertices.count * MemoryLayout<Float>.size
+        let indicesLength = indices.count * MemoryLayout<UInt16>.size
+
+        guard let verticesBuffer = device.makeBuffer(bytes: vertices, length: verticesLength, options: .cpuCacheModeWriteCombined),
+              let indicesBuffer = device.makeBuffer(bytes: indices, length: indicesLength, options: .cpuCacheModeWriteCombined)
+        else {
+            preconditionFailure("バッファの生成に失敗")
+        }
+
+        self.verticesBuffer = verticesBuffer
+        self.indicesBuffer = indicesBuffer
+
+        let vertexAttributeDesc = MTLVertexAttributeDescriptor()
+        vertexAttributeDesc.format = .float4
+
+        let vertexBufferLayoutDesc = MTLVertexBufferLayoutDescriptor()
+        vertexBufferLayoutDesc.stride = 4 * MemoryLayout<Float>.size
+        vertexBufferLayoutDesc.stepFunction = .perVertex
+        vertexBufferLayoutDesc.stepRate = 1
+
+        vertexDesc = MTLVertexDescriptor()
+        vertexDesc.attributes[0] = vertexAttributeDesc
+        vertexDesc.layouts[0] = vertexBufferLayoutDesc
+    }
+
+```
+
+</div></details>
+
+:::note
+**NOTE: シェーダーコードを文字列で持っている理由**
+
+[MetalShader.swift](https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples/blob/main/UnityProjects/BuiltInRP/Assets/LLNPISample/Plugins/LLNPIWithMetal/Native/MetalShader.swift)を見たら分かる通り、今回のプロジェクトでは**シェーダーコードを文字列として持ってます。**
+
+これだけ見ると普通に「 `.metal` で持って `makeDefaultLibrary()` で読み込めば良いのでは？」と思うかもしれませんが、今回は以下の理由から意図して `.metal` に持たずに文字列で持つようにしてます。
+
+- `UniryFramework`を組み込む先を考えて `.metal` の配置を考える必要がある
+    -  とは言え、普通に Unity が iOS ビルドで出力する `xcodeproj` でアプリをビルドするなら、 `.metal` を `Unity-iPhone` と言うターゲットに含めるようにすれば解決できる
+    -  ただし UaaL とかを考え始めると面倒そう...
+- そもそも Unity のプロジェクト上に `.metal` を配置しても自動で iOS ビルドに含めてくれない...
+    - 自前で `.metal` をコピーして `xcodeproj` に含める拡張を実装する必要がある
+- 実装しているシェーダーコードがシンプルだったのもあったので、費用対効果を考えると手間だった
+
+**必ずしも文字列で持つのが正解では無いかと思われるので、プロジェクトの要件に応じて変えていくのが良いかと思います。**
+(ちなみに[公式プロジェクト](https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphics/MetalNativeRenderingPlugin)の方も同じく文字列で持っている)
+:::
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 # 次回予告
