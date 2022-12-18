@@ -35,11 +35,15 @@ static IUnityGraphics* g_Graphics = 0;
 // NB old unversioned interface will be still provided for some time for backwards compatibility
 static IUnityGraphicsMetalV1* g_MetalGraphics = 0;
 
+// NOTE: 各定義は `IUnityGraphics.h` を参照
 static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventType) {
     switch (eventType) {
         case kUnityGfxDeviceEventInitialize:
             assert(g_Graphics->GetRenderer() == kUnityGfxRendererMetal);
             onUnityGfxDeviceEventInitialize();
+            break;
+        case kUnityGfxDeviceEventShutdown:
+            assert(g_Graphics->GetRenderer() == kUnityGfxRendererMetal);
             break;
         default:
             // ignore others
@@ -97,5 +101,5 @@ void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload() {
 }
 @end
 
-// 定義したサブクラスはこちらのマクロを経由して老録する必要がある
+// 定義したサブクラスはこちらのマクロを経由して登録する必要がある
 IMPL_APP_CONTROLLER_SUBCLASS(MyAppController);
