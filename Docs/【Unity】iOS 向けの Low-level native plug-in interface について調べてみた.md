@@ -23,7 +23,7 @@ https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphic
 この記事では先程挙げた[公式のサンプルプロジェクト](https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphics/MetalNativeRenderingPlugin)をベースに以下のトピックについて順に解説していければと思います。
 
 - **iOS向けの `Low-level native plug-in interface` の導入について**
-    - レンダースレッドからの任意のメソッドを呼び出すには
+    - レンダースレッドからの任意のレンダリング関数を呼び出すには
     - Swift で実装していくにあたっての補足
 - **公式サンプルをベースに実装内容の解説**
 
@@ -71,7 +71,7 @@ https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples
 - Unity 及び iOS向けのネイティブプラグインの実装知識
 - [Metal](https://developer.apple.com/jp/metal/) の基礎知識
 
-この記事中では詳細までは解説しないので、別途資料を見てキャッチアップを済ませておくところまでを前提に書いていきます。
+この記事中では詳細までは解説しないので、知らない方は別途入門者向けの資料などを見てキャッチアップを済ませてあるところまでを前提に書いていきます。
 
 :::note warn
 と書いたものの...自分も Metal に関してはまだ初学者なので、もし間違いや違和感のある記載など見かけたら、コメントや編集リクエストなどでご指摘いただけると幸いです。。 :bow: 
@@ -85,7 +85,7 @@ https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples
 
 こちらのやり方の大凡は[公式ドキュメント](https://docs.unity3d.com/Manual/NativePluginInterface.html)の方にも書かれておりますが、**iOS向けで使う場合には幾つか別途対応する必要がある箇所もある**ので、そこらも補足しつつ解説していければと思います。
 
-導入まで済んだら **Unity が持つ低レベルな GraphicsAPI へアクセスするためのインターフェースが手に入っている**ので、次にこちらを用いるための「レンダースレッドから任意のメソッドを呼び出す方法」について解説します。
+導入まで済んだら **Unity が持つ低レベルな GraphicsAPI へアクセスするためのインターフェースが手に入っている**ので、次にこちらを用いるための「レンダースレッドから任意のレンダリング関数を呼び出す方法」について解説します。
 
 :::note note
 今回のサンプルプロジェクトでは大凡のロジック周りはSwiftで実装してますが、これから解説する **`LLNPI` の初期化やイベントの登録周りについてはマクロ周りが絡む都合上、ObjC で実装してます。** [^1]
@@ -197,7 +197,7 @@ static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType ev
 ::: note
 **NOTE: `IUnityGraphics.h`とかはどこにあるのか？**
 
-`IUnityGraphics.h` と言ったコードは Unity が iOS ビルド時に出力する `xcodeproj` の中に含まれており、今回関連する以下のコード含めて `(ビルドの出力先)/Classes/Unity` 以下に実態があります。
+`IUnityGraphics.h` と言ったコードは Unity が iOS ビルド時に出力する `xcodeproj` の中に含まれており、今回関連する以下のコード含めて `(ビルドの出力先)/Classes/Unity` 配下に実態があります。
  
 - `IUnityInterface.h`
 - `IUnityGraphics.h`
@@ -208,7 +208,7 @@ static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType ev
 
 上述の手順で手に入る `IUnityGraphicsMetalV1` についても先に軽く触れておきます。
 
-`IUnityGraphicsMetalV1` は `IUnityGraphicsMetal.h` にて宣言されており、一部機能を抜粋すると恐らくは `Metal` に触れたことがある方なら見たことがあるであろうAPIが提供されてます。
+`IUnityGraphicsMetalV1` は `IUnityGraphicsMetal.h` にて宣言されており、一部機能を抜粋すると恐らくは `Metal` に触れたことがある方なら目にしたことがあるであろうAPIが提供されてます。
 
 
 ```objc:IUnityGraphicsMetal.h
@@ -408,19 +408,19 @@ const char* AppControllerClassName = "UnityAppController";
 </div></details>
 
 
-## レンダースレッドからの任意のメソッドを呼び出すには
+## レンダースレッドからの任意のレンダリング関数を呼び出すには
 
-ここまで準備できたら `IUnityGraphicsMetalV1` を用いて Metal APIを叩くだけですが、これらの実装はレンダースレッドから呼び出す必要があるみたいです。
+ここまで準備できたら `IUnityGraphicsMetalV1` を用いて実際に Metal API を叩くレンダリング関数を実装するだけですが、これらの処理はレンダースレッドから呼び出す必要があります。
 
 Unity iOS は初期設定だと `Multithread Rendering` が有効になっており、この場合にはレンダリング関連の処理が `MonoBehaviour` などが実行されるメインスレッドとは **別のスレッド(レンダースレッド)で実行されることになります。**
 
-この状態でメインスレッドから描画関連のイベントを呼び出すのは都合が悪いので、今回のようにレンダースレッド上で任意のレンダリングメソッドを呼び出す際には `GL.IssuePlugimEvent` と言うAPIを経由して呼び出す必要があります。
+この状態でメインスレッドから描画関連の処理を呼び出すのは都合が悪いので、今回のようにレンダースレッド上で任意のレンダリングに関する処理を呼び出す際には `GL.IssuePlugimEvent` と言うAPIを経由して呼び出す必要があります。
 
 https://docs.unity3d.com/ScriptReference/GL.IssuePluginEvent.html
 
 これだけだと少し分かりづらいかもなので、実装例と併せて解説していきます。
 
-### ◇ C# 側でレンダースレッドから呼び出したいメソッドをコール
+### ◇ C# 側でレンダースレッドから呼び出したい関数をイベント経由でコール
 
 先ずはC#のコードを載せます。
 
@@ -431,7 +431,7 @@ https://docs.unity3d.com/ScriptReference/GL.IssuePluginEvent.html
 - **`RenderMethod2`**
     - `WaitForEndOfFrame` で待ってレンダリングが完了したタイミング
 
-**この `eventType` はネイティブコード側で呼び出されたメソッドを判別する際に利用します。**
+**この `eventType` はネイティブコード側で呼び出されたイベントを判別する際に利用します。**
 
 ```csharp
 sealed class Sample : MonoBehaviour
@@ -482,7 +482,9 @@ sealed class Sample : MonoBehaviour
 
 C#側で `GL.IssuePluginEvent` を呼び出すと、第一引数に渡している `getRenderEventFunc` が P/Invoke 経由で呼び出され、**更にそこで返している関数ポインタの先である `OnRenderEvent(int eventID)` がレンダースレッドから呼び出されます。**
 
-`OnRenderEvent` の引数には C# から渡した int型 の `eventType` が渡ってくるので、こちらを見る形でどのメソッドが呼ばれたかを分岐してます。
+`OnRenderEvent` の引数には C# から渡した int型 の `eventType` が渡ってくるので、こちらを見る形でどのイベントが呼ばれたかを分岐してます。
+
+**あとは渡ってきたイベントを元に任意の関数を呼び出すことでレンダリング関数を実装していくことが可能です。**
 
 ```objc
 // C# 側にある `enum EventType` と同じ定義を用意
@@ -502,10 +504,10 @@ UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API getRenderEventFun
 static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
     switch (eventID) {
         case RenderMethod1:
-            // C# から `CallRenderEventFunc(EventType.RenderMethod1)` が呼ばれたときに実行されるイベントを実装
+            // C# から `CallRenderEventFunc(EventType.RenderMethod1)` が呼ばれたときに実行されるレンダリング関数を実装
             break;
         case RenderMethod2:
-            // C# から `CallRenderEventFunc(EventType.RenderMethod2)` が呼ばれたときに実行されるイベントを実装
+            // C# から `CallRenderEventFunc(EventType.RenderMethod2)` が呼ばれたときに実行されるレンダリング関数を実装
             break;
     }
 }
@@ -514,11 +516,260 @@ static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
 `eventType` 自体は int型 ではあるものの、今回のように互いに enum型 で定義しておくと可読性的にも分かりやすくなるかもなのでオススメです。
 
 
+
 ## Swiftで実装していくにあたっての補足
 
+ここからは更に一部の処理を Swift の実装に移行し、**レンダリングに関する処理を Swift だけで実装できるように設定していく手順について解説していきます。**
+(ObjC だけで実装/保守したい方は読み飛ばしても問題ありません)
+
+### ◇ `OnRenderEvent` を Swiftに移行する
+
+ObjC にある以下の `OnRenderEvent` は Swiftに移行することが可能です。
+
+```swift
+// Unity側で `GL.IssuePluginEvent` を呼ぶとレンダリングスレッドから呼ばれる
+static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
+    switch (eventID) {
+        case RenderMethod1:
+            // C# から `CallRenderEventFunc(EventType.RenderMethod1)` が呼ばれたときに実行されるレンダリング関数を実装
+            break;
+        case RenderMethod2:
+            // C# から `CallRenderEventFunc(EventType.RenderMethod2)` が呼ばれたときに実行されるレンダリング関数を実装
+            break;
+    }
+}
+```
+
+具体的に言うと先ずは ObjC コードを以下のように変更します。
+
+P/Invoke から呼び出される `getRenderEventFunc` はマクロの都合上、実装を ObjC 側で持つ必要はあります[^2]が、**そこで返す関数自体は外部宣言した関数を経由することで Swift 側に実装を持っていくことが可能です。**
+
+[^2]: ひょっとしたらこちらも Swift 実装に持っていく手法が無きにしもあらずかもですが...マクロ周りの解決方法が分からなかったので断念... (分かる方が居たら教えて頂けると幸いです)
+
+```objc
+// ここでは外部宣言だけ (実装は Swift 側で行う)
+extern void onRenderEvent();
+
+// GL.IssuePluginEvent で登録するコールバック関数のポインタを返す
+UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API getRenderEventFunc() {
+    // Swift側で実装している`onRenderEvent`を返す
+    return onRenderEvent;
+}
+```
+
+Swift 側では「Cの関数」として定義するために `@_cdecl` を用いる必要があります。
+
+```swift
+enum EventType: Int32 {
+    case renderMethod1 = 0
+    case renderMethod2 = 1
+}
+
+// ObjC 側で外部宣言した関数は `@_cdecl` を用いて「Cの関数」として実装することで持っていくことが可能
+@_cdecl("onRenderEvent")
+func onRenderEvent(eventID: Int32) {
+    switch EventType(rawValue: eventType)! {
+    case .renderMethod1:
+        break
+    case .renderMethod2:
+        break
+    }
+}
+```
 
 
+### ◇ Swift から `IUnityGraphicsMetalV1` にアクセスできるようにする
 
+「これであとは Swift だけで実装できる！」と思いきや、 **現状のままだと Swift から `IUnityGraphicsMetalV1` にアクセスすることができません。**
+
+肝心の GraphicsAPI にアクセスできないのでは意味がないので解決していきます。
+
+
+#### ◆ `UnityFramework.h` を書き換えて `IUnityGraphicsMetalV1` を取得するためのクラスを追加する
+
+先ずは Swift から `IUnityGraphicsMetalV1` を取得するためのクラスを用意していきます。
+
+Swift から ObjC にアクセスするには `Umbrella header` [^3]に該当する `UnityFramework.h` に対して必要な機能を持たせる必要があるので、 **今回は以下のように`IUnityGraphicsMetalV1` を取得するためのクラスを追加します。**
+
+[^3]: `Umbrella header` とは Xcode が Framework を作成した際に自動で生成してくれるファイルであり、Unityが出力する `xcodeproj` では `UnityFramework.h` が該当します。もう少し詳細について解説すると、こちらに Framework で使われる各種ヘッダーなどを含むことによって、実際に Framework を組み込む側が `Umbrella header` をインクルードするだけで `Framework` の全機能にアクセスできるようになると言う仕組みになります。(若干解説に自信ないので間違ってたら教えて下さい...)
+
+```objc:UnityFramework.h
+// こちらを追加
+#import "IUnityGraphicsMetal.h"
+
+(中略)
+
+/// Swiftに `IUnityGraphicsMetalV1` を渡すためのブリッジ
+///
+/// NOTE:
+/// Swiftからは「Low-level native plug-in interface」から受け取った
+/// `IUnityGraphicsMetalV1`に対して直接アクセスする術が無いので、
+/// こちらのクラスを介して構造体のポインタを渡す形を取っている。
+///
+/// そのため、前提としてUnityがiOSビルド時に出力するソースの中で、
+/// 以下のヘッダーファイルについては Target Membership を事前に「public」に設定しておく必要がある。
+/// - IUnityInterface.h
+/// - IUnityGraphics.h
+/// - IUnityGraphicsMetal.h
+__attribute__ ((visibility("default")))
+@interface UnityGraphicsBridge : NSObject {
+}
++ (IUnityGraphicsMetalV1*)getUnityGraphicsMetalV1;
+@end
+```
+
+ここではアクセス用のクラスとして、新規で `UnityGraphicsBridge` を宣言してます。
+
+::: note
+この対応内容は恐らくは `Unity as a Library (UaaL)` が公式サポートされ始めた Unity2019.3 前後で変わってくるかと思われます。
+
+詳細について詳しく解説すると脱線するので割愛しますが、 `UnityFramework` への分割は UaaL が対応されてからの話なので、恐らくは `2019.3` より前のUnityは別の解決方法を取る必要があるかもです。
+(未調査ですが、恐らくは `Bridging Header` で import を行う辺りの対応が必要だと予想)
+:::
+
+#### ◆ Swift に公開する必要があるヘッダーファイルを公開設定に変更
+
+上記のコードのままだと `UnityFramework` から `IUnityGraphicsMetalV1` や、関連する定義が含まれているヘッダーファイルにアクセスできずにコンパイルエラーが発生します。
+
+```objc:UnityFramework.h
+// 設定を行わないと、ここでコンパイルエラーが発生
+#import "IUnityGraphicsMetal.h"
+```
+
+これらを解決するには上に挙げた定義などが含まれている **以下のヘッダーファイルのアクセス権限を変更して `UnityFramework` からも見えるようにする必要があります。**
+
+- `IUnityInterface.h`
+- `IUnityGraphics.h`
+- `IUnityGraphicsMetal.h`
+
+Xcode 上からこの設定を行うには、該当するヘッダーファイルを選択し、以下画像の右の枠にある箇所 (`Target Membership`)の情報を `Public` に変更することで対応可能です。
+
+![スクリーンショット 2022-12-18 8.53.48.png](https://qiita-image-store.s3.ap-northeast-1.amazonaws.com/0/80207/a33bb4d2-4359-19d1-bdf5-2f0c934dbdad.png)
+
+ただ...ビルド時にいちいち手動で書き換えるのはスマートではないので、**最後に Editor 拡張で設定を自動化したコードを解説します。**
+
+
+#### ◆ `UnityFramework.h` で宣言した `UnityGraphicsBridge` を実装する
+
+最後に `LLNPI` に関する処理を実装した `IUnityGraphicsMetalV1` のポインタを持つコード側で `UnityGraphicsBridge` を実装することで `IUnityGraphicsMetalV1` をそのまま返せるようにします。
+
+サンプルコードでは `UnityPluginRegister.m` にて実装を行ってます。
+
+```objc:UnityPluginRegister.m
+// MARK:- UnityGraphicsBridgeの実装
+
+// NOTE:
+// - Swiftからアクセスしたいので、@interface の宣言は UmbrellaHeaderである `UnityFramework.h` にある
+
+@implementation UnityGraphicsBridge {
+}
++ (IUnityGraphicsMetalV1*)getUnityGraphicsMetalV1 {
+    // LLNPI から得た `IUnityGraphicsMetalV1` のポインタをただ返すだけ
+    return g_MetalGraphics;
+}
+@end
+```
+
+あとは Swift からは `UnityGraphicsBridge` から得られるポインタを経由することで、インスタンスにアクセスすることが出来るようになります。
+
+```swift
+@_cdecl("onRenderEvent")
+func onRenderEvent(eventID: Int32) {
+
+    // ポインタ経由でインスタンスを取得
+    let unityMetal = UnityGraphicsBridge.getUnityGraphicsMetalV1().pointee
+    
+    // `MetalDevice()` からは `MTLDevice` を得られるので出力
+    print(unityMetal.MetalDevice())
+
+    switch EventType(rawValue: eventType)! {
+    case .renderMethod1:
+        break
+    case .renderMethod2:
+        break
+    }
+}
+```
+
+#### ◆ ここまでの手順を自動化する
+
+`UnityFramework.h`を書き換えたり、一部のヘッダーファイルのアクセス権限を変更したりとしましたが、**最後にこれらの設定を全て Editor 拡張で自動化します。**
+(やり方はいつもの？ `[PostProcessBuild]` を用いた `PBXProject` の書き換えです。[詳しくはこちら](https://qiita.com/mao_/items/c678f93ee04608492788))
+
+コード全般は以下を御覧ください。
+
+<details><summary>コード全体はこちら (クリックで展開)</summary><div>
+
+```csharp:XcodePostProcess.cs
+#if UNITY_IOS
+using System.IO;
+using UnityEditor;
+using UnityEditor.Callbacks;
+using UnityEditor.iOS.Xcode;
+using UnityEngine;
+
+namespace LLNPISample.Plugins.LLNPIWithMetal.Editor
+{
+    internal static class XcodePostProcess
+    {
+        [PostProcessBuild]
+        private static void OnPostProcessBuild(BuildTarget target, string xcodeprojPath)
+        {
+            if (target != BuildTarget.iOS) return;
+
+            var pbxProjectPath = PBXProject.GetPBXProjectPath(xcodeprojPath);
+            var pbxProject = new PBXProject();
+            pbxProject.ReadFromString(File.ReadAllText(pbxProjectPath));
+
+            ReplaceNativeSources(xcodeprojPath);
+            SetPublicHeader(ref pbxProject);
+
+            File.WriteAllText(pbxProjectPath, pbxProject.WriteToString());
+        }
+
+        private static void ReplaceNativeSources(string xcodeprojPath)
+        {
+            // iOSビルド結果にある`UnityFramework.h`を改造済みのソースに差し替える
+            const string headerFile = "UnityFramework.h";
+            const string replaceHeaderPath = "/LLNPISample/Plugins/LLNPIWithMetal/Native/.ReplaceSources/" + headerFile;
+            const string nativePath = "/UnityFramework/" + headerFile;
+
+            var srcPath = Application.dataPath + replaceHeaderPath;
+            var dstPath = xcodeprojPath + nativePath;
+            File.Copy(srcPath, dstPath, true);
+        }
+
+        private static void SetPublicHeader(ref PBXProject pbxProject)
+        {
+            // iOSビルド結果にある以下のヘッダーはpublicとして設定し直す
+            const string sourcesDirectory = "Classes/Unity/";
+            var sources = new[]
+            {
+                "IUnityInterface.h",
+                "IUnityGraphicsMetal.h",
+                "IUnityGraphics.h",
+            };
+
+            var frameworkGuid = pbxProject.GetUnityFrameworkTargetGuid();
+            foreach (var source in sources)
+            {
+                var sourceGuid = pbxProject.FindFileGuidByProjectPath(sourcesDirectory + source);
+                pbxProject.AddPublicHeaderToBuild(frameworkGuid, sourceGuid);
+            }
+        }
+    }
+}
+
+#endif
+```
+
+</div></details>
+
+
+:::note warn
+上記の例では `UnityFramework.h` を `[PostProcessBuild]` のタイミングで**事前に編集したソースコードと差し替える**と言う**準黒魔術チックな魔法**で問題を解決してますが、`UnityFramework.h` 含めた Unity が iOS ビルドで出力するコード全般は、 **Unity のバージョンアップによって内容が暗黙的に変わる可能性があるため、その点だけ念頭に置いておく必要があります。**
+(例えば Unity のバージョンを上げた際に差し替え元のコードに変更が走っていると、差し替えた際にコードが古くてエラーが起こる可能性がある)
+:::
 
 
 # 次回予告
@@ -529,3 +780,4 @@ static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
 # 参考/関連リンク
 
 - [Low-level native plug-in interface](https://docs.unity3d.com/Manual/NativePluginInterface.html)
+- [FrameworkでSwiftとObjective-C混ぜるのはやばい](https://qiita.com/fr0g_fr0g/items/82789af60b27ae19b263)
