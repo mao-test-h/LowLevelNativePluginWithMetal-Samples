@@ -20,14 +20,14 @@ https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphic
 
 # この記事で解説する内容について
 
-この記事では先程挙げた[公式のサンプルプロジェクト](https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphics/MetalNativeRenderingPlugin)をベースに以下のトピックについて順に解説していければと思います。
+この記事では先程挙げた[公式のサンプルプロジェクト](https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphics/MetalNativeRenderingPlugin)をベースに以下のトピックについて順に解説します。
 
 - **iOS向けの `Low-level native plug-in interface` の導入について**
     - レンダースレッドからの任意のレンダリングメソッドを呼び出すには
     - Swift で実装していくにあたっての補足
 - **公式サンプルをベースに実装内容の解説**
 
-あとは幾つかの用語についてはそのままだと長いので、以降は以下の省略表記で解説していきます。
+あとは幾つかの用語についてはそのままだと長いので、以降は以下の省略表記で記載していきます。
 
 - `Low-level native plug-in interface` → `LLNPI`
     - ※頭文字を取って省略
@@ -97,19 +97,23 @@ https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples
 
 ## インターフェースの登録
 
-`LLNPI` は **Unity が事前に用意してくれている仕組みをネイティブプラグインとして実装する**ことで、低レベルな GraphicsAPI と言った機能郡にアクセスする事ができるようになります。
+`LLNPI` は **Unity が事前に用意してくれている仕組みをネイティブプラグインとして実装する**ことで、低レベルな GraphicsAPI  にアクセスする事ができるようになります。
 
-もう少し具体的に言うと、**ネイティブプラグイン側で `UnityPluginLoad` と `UnityPluginUnload` と言う関数を実装することで Unity が自動でこちらの関数を呼び出し、更にここから今回の肝である GraphicsAPI へアクセスするためのインターフェースを受け取る**ことができます。　
+もう少し具体的に言うと、**iOSの場合にはネイティブプラグイン側で `UnityPluginLoad` と `UnityPluginUnload` と言う関数を実装し、後述する手順で登録することで Unity がこちらの関数を呼び出してくれるようになります。**
 
-:::note warn
-「Unityが自動でこちらの関数を呼び出してくれる」と書きましたが、**iOSの場合には少し語弊があり、正確に言うと更に追加の実装を行わなければ呼び出されません。**
-記事中では便宜的に自動で呼び出される前提で書いてますが、こちらの詳細については追って解説していきます。
+その上で**更にここから今回の肝である GraphicsAPI へアクセスするためのインターフェースを受け取ることが出来るので、** それを用いることで低レベルな GraphicsAPI にアクセスすることが可能です。
+
+:::note note
+`LLNPI` は iOS 以外のプラットフォームでも共通して使える機能であり、プラットフォームによっては後述する登録の手順を踏まずとも `UnityPluginLoad` と `UnityPluginUnload` を定義して公開するだけで自動で呼び出してくれる環境もあるみたいです。
+
+これらの制約は iOS がプラットフォーム的にダイナミックライブラリを使えないので、ライブラリから名前指定で関数をロードすることができないと言ったところから来ているようです。
+参考 : [README](https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphics/MetalNativeRenderingPlugin) 
 ::: 
 
 
 ### ◇ `UnityPluginLoad` と `UnityPluginUnload` の実装
 
-サンプルプロジェクトからコードを抜粋すると、`ObjC` 側で実装している以下の関数がUnityから自動で呼び出されるので、この関数を経由して以下のインターフェースを取得します。  
+サンプルプロジェクトからコードを抜粋すると、`ObjC` 側で実装している以下の関数が後述する登録手順を踏むことによって Unity から呼び出される様になるので、この関数を経由して以下のインターフェースを取得します。  
 
 - `IUnityInterfaces`
     - こちらのインタフェース経由で次の物が取得可能
@@ -343,7 +347,7 @@ UNITY_REGISTER_INTERFACE_GUID(0x992C8EAEA95811E5ULL, 0x9A62C4B5B9876117ULL, IUni
 
 ### ◇ iOSの場合には `UnityAppController` のサブクラスを定義し、`shouldAttachRenderDelegate` をオーバーライドして登録を行う
 
-前述したとおり、**iOS 環境の場合には`UnityPluginLoad` と `UnityPluginUnload` は自動で呼び出されません。**
+前述したとおり、**iOS 環境の場合には特定の手順を踏まないと`UnityPluginLoad` と `UnityPluginUnload` が呼び出されません。**
 
 こちらを呼び出すには、以下のように **`UnityAppController` のサブクラスを定義し、更に `shouldAttachRenderDelegate` をオーバーライドして手動で `UnityPluginLoad` と `UnityPluginUnload` を登録する必要があります。**
 
@@ -366,7 +370,7 @@ UNITY_REGISTER_INTERFACE_GUID(0x992C8EAEA95811E5ULL, 0x9A62C4B5B9876117ULL, IUni
 @end
 ```
 
-その上で定義したクラスは `IMPL_APP_CONTROLLER_SUBCLASS` と言うマクロを経由することで Unity に登録する必要があります。
+**その上で定義したクラスは `IMPL_APP_CONTROLLER_SUBCLASS` と言うマクロを経由することで Unity に登録する必要があります。**
 
 ```objc:UnityPluginRegister.m
 // 定義したサブクラスはこちらのマクロを経由して登録する必要がある
@@ -425,18 +429,18 @@ https://docs.unity3d.com/ScriptReference/GL.IssuePluginEvent.html
 
 これだけだと少し分かりづらいかもなので、実装例と併せて解説していきます。
 
-### ◇ C# 側でレンダースレッドから呼び出したい関数をイベント経由でコール
+### ◇ C# 側からレンダースレッドから呼び出したいメソッドをイベント経由でコール
 
-先ずはC#のコードを載せます。
+先ずは C# のコードを載せます。
 
-ここでは以下のタイミングで `GL.IssuePlugimEvent` を呼び出しており、タイミングに応じて引数に int型 の `eventType` を渡してます。(渡すのは int型 ではあるが、C#上では便宜的に enum型 として定義)
+ここでは以下のタイミングで `GL.IssuePlugimEvent` を呼び出しており、タイミングに応じて引数に int型 の `eventType` を渡してます。(渡すのは int型 ではあるが、 C# 上では便宜的に enum型 として定義)
 
 - **`RenderMethod1`**
     - `OnPostRender()` が呼び出されるタイミング
 - **`RenderMethod2`**
     - `WaitForEndOfFrame` で待ってレンダリングが完了したタイミング
 
-**この `eventType` はネイティブコード側で呼び出されたイベントを判別する際に利用します。**
+**引数として渡した `eventType` はネイティブコード側で呼び出されたイベントを判別する際に利用します。**
 
 ```csharp
 sealed class Sample : MonoBehaviour
@@ -537,7 +541,7 @@ static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
 
 ObjC にある以下の `OnRenderEvent` は Swift に移行することが可能です。
 
-```swift
+```objc
 // Unity側で `GL.IssuePluginEvent` を呼ぶとレンダリングスレッドから呼ばれる
 static void UNITY_INTERFACE_API OnRenderEvent(int eventID) {
     switch (eventID) {
@@ -668,7 +672,7 @@ Xcode 上からこの設定を行うには、該当するヘッダーファイ�
 
 #### ◆ `UnityFramework.h` で宣言した `UnityGraphicsBridge` を実装する
 
-最後に `LLNPI` に関する処理を実装した `IUnityGraphicsMetalV1` のポインタを持つコード側で `UnityGraphicsBridge` を実装することで `IUnityGraphicsMetalV1` をそのまま返せるようにします。
+`LLNPI` に関する処理を実装した `IUnityGraphicsMetalV1` のポインタを持つコード側で `UnityGraphicsBridge` を実装することで `IUnityGraphicsMetalV1` をそのまま返せるようにします。
 
 サンプルコードでは `UnityPluginRegister.m` にて実装を行ってます。
 
