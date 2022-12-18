@@ -20,12 +20,12 @@ https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphic
 
 # この記事で解説する内容について
 
-この記事では先程挙げた[公式のサンプルプロジェクト](https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphics/MetalNativeRenderingPlugin)をベースに以下のトピックについて順に解説します。
+この記事では以下のトピックについて順に解説します。
 
 - **iOS向けの `Low-level native plug-in interface` の導入について**
     - レンダースレッドからの任意のレンダリングメソッドを呼び出すには
     - Swift で実装していくにあたっての補足
-- **公式サンプルをベースに実装内容の解説**
+- **サンプルプロジェクトをベースに実装内容の解説**
 
 あとは幾つかの用語についてはそのままだと長いので、以降は以下の省略表記で記載していきます。
 
@@ -49,8 +49,7 @@ https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples
 
 
 :::note warn
-記載の通り、このプロジェクトでは **Built-in RenaderPipleine**を前提に実装してます。  
-(URPは調査中...)
+記載の通り、このプロジェクトでは **Built-in RenaderPipleine**を前提に実装してます。(URPは調査中...)
 ::: 
 
 
@@ -66,15 +65,14 @@ https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples
 
 ### ◇ 前提となる予備知識
 
-記事を読むにあたっては以下の予備知識を必要とします。
+記事を読むにあたっては以下の予備知識を前提とします。
+ここらの詳細については記事中では深くまで解説しないのでご了承ください。
 
 - Unity 及び iOS向けのネイティブプラグインの実装知識
 - [Metal](https://developer.apple.com/jp/metal/) の基礎知識
 
-この記事中では詳細までは解説しないので、知らない方は別途入門者向けの資料などを見てキャッチアップを済ませてあるところまでを前提に書いていきます。
-
 :::note warn
-と書いたものの...自分も Metal に関してはまだ初学者なので、もし間違いや違和感のある記載など見かけたら、コメントや編集リクエストなどでご指摘いただけると幸いです。。 :bow: 
+と書いたものの...自分も Metal に関してはまだ初学者なので、もし間違いや違和感のある記載など見かけたら、コメントや編集リクエストなどでご指摘いただけると幸いです... :bow: 
 ::: 
 
 
@@ -85,12 +83,12 @@ https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples
 
 先ずはiOS環境にて `LLNPI` をどうやって導入するのか？について解説します。
 
-やり方の大凡は[公式ドキュメント](https://docs.unity3d.com/Manual/NativePluginInterface.html)の方にも書かれておりますが、**iOS向けで使う場合には幾つか追加で別途対応を行う箇所が存在する**ので、そこらも補足しつつ解説していければと思います。
+やり方の大凡は[公式ドキュメント](https://docs.unity3d.com/Manual/NativePluginInterface.html)の方にも書かれてますが、**iOS向けで使う場合には幾つか追加で別途対応を行う箇所が存在する**ので、そこらも補足しつつ解説していければと思います。
 
 導入まで済んだら **Unity が持つ低レベルな GraphicsAPI へアクセスするためのインターフェースが手に入る**ので、次にこちらを用いるための「レンダースレッドから任意のレンダリングメソッドを呼び出す方法」について解説していきます。
 
 :::note note
-今回のサンプルプロジェクトでは大凡のロジック周りはSwiftで実装してますが、これから解説する **`LLNPI` の初期化やイベントの登録周りについてはマクロ周りが絡む都合上、ObjC で実装してます。** [^1]
+今回実装したサンプルプロジェクトでは大凡のロジック周りは Swift で実装してますが、これから解説する **`LLNPI` の初期化やイベントの登録周りについてはCのマクロが絡む都合上、ObjC で実装してます。** [^1]
 
 他にも **Swift で実装をしていくにあたっては幾つか追加で設定が必要となってくる**ので、こちらについては「[Swiftで実装していくにあたっての補足](#swiftで実装していくにあたっての補足)」の章にて解説します。
 :::
@@ -101,14 +99,14 @@ https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples
 
 `LLNPI` は **Unity が事前に用意してくれている仕組みをネイティブプラグインとして実装する**ことで、低レベルな GraphicsAPI  にアクセスする事ができるようになります。
 
-もう少し具体的に言うと、**iOSの場合にはネイティブプラグイン側で `UnityPluginLoad` と `UnityPluginUnload` と言う関数を実装し、後述する手順で登録することで Unity がこちらの関数を呼び出してくれるようになります。**
+もう少し具体的に言うと、**iOS の場合にはネイティブプラグイン側で `UnityPluginLoad` と `UnityPluginUnload` と言う関数を実装し、後述する手順で登録することで Unity がこちらの関数を呼び出してくれるようになります。**
 
-その上で**更にここから今回の肝である GraphicsAPI へアクセスするためのインターフェースを受け取ることが出来るので、** それを用いることで低レベルな GraphicsAPI にアクセスすることが可能です。
+その上で**更にここから今回の肝である GraphicsAPI へアクセスするためのインターフェースを受け取ることが出来るので、** 受け取ったインターフェースを用いてレンダリングに関する処理を実装していくことが可能です。
 
 :::note note
 `LLNPI` は iOS 以外のプラットフォームでも共通して使える機能であり、プラットフォームによっては後述する登録の手順を踏まずとも `UnityPluginLoad` と `UnityPluginUnload` を定義して公開するだけで自動で呼び出してくれる環境もあるみたいです。
 
-これらの制約は iOS がプラットフォーム的にダイナミックライブラリを使えないので、ライブラリから名前指定で関数をロードすることができないと言ったところから来ているようです。
+一方で iOS はプラットフォーム的にダイナミックライブラリを使うことが出来ず、ライブラリから名前指定で関数をロードすることが出来ないという制約上から今の形になっているようです。
 参考 : [README](https://github.com/Unity-Technologies/iOSNativeCodeSamples/tree/2019-dev/Graphics/MetalNativeRenderingPlugin) 
 ::: 
 
@@ -208,7 +206,7 @@ static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType ev
 ::: note
 **NOTE: `IUnityGraphics.h`とかはどこにあるのか？**
 
-`IUnityGraphics.h` と言ったコードは Unity が iOS ビルド時に出力する `xcodeproj` の中に含まれており、今回関連する以下のソース含めて `(ビルドの出力先)/Classes/Unity` の下にファイルがあります。
+`IUnityGraphics.h` と言ったコードは Unity が iOS ビルド時に出力する `xcodeproj` の中に含まれており、今回関連する以下のソース含めて `(ビルドの出力先)/Classes/Unity` の下にソースコードがあります。
  
 - `IUnityInterface.h`
 - `IUnityGraphics.h`
@@ -225,8 +223,6 @@ static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType ev
 ```objc:IUnityGraphicsMetal.h
 UNITY_DECLARE_INTERFACE(IUnityGraphicsMetalV1)
 {
-    // 中略
-
     NSBundle* (UNITY_INTERFACE_API * MetalBundle)();
     
     id<MTLDevice>(UNITY_INTERFACE_API * MetalDevice)();
@@ -349,7 +345,7 @@ UNITY_REGISTER_INTERFACE_GUID(0x992C8EAEA95811E5ULL, 0x9A62C4B5B9876117ULL, IUni
 
 ### ◇ iOSの場合には `UnityAppController` のサブクラスを定義し、`shouldAttachRenderDelegate` をオーバーライドして登録を行う
 
-前述したとおり、**iOS 環境の場合には特定の手順を踏まないと`UnityPluginLoad` と `UnityPluginUnload` が呼び出されません。**
+前述した通り、**iOS 環境の場合には特定の手順を踏まないと`UnityPluginLoad` と `UnityPluginUnload` が呼び出されません。**
 
 こちらを呼び出すには、以下のように **`UnityAppController` のサブクラスを定義し、更に `shouldAttachRenderDelegate` をオーバーライドして手動で `UnityPluginLoad` と `UnityPluginUnload` を登録する必要があります。**
 
@@ -431,7 +427,7 @@ https://docs.unity3d.com/ScriptReference/GL.IssuePluginEvent.html
 
 これだけだと少し分かりづらいかもなので、実装例と併せて解説していきます。
 
-### ◇ C# 側からレンダースレッドから呼び出したいメソッドをイベント経由でコール
+### ◇ C# 側からレンダースレッドで呼び出したいメソッドをイベント経由でコール
 
 先ずは C# のコードを載せます。
 
@@ -442,7 +438,7 @@ https://docs.unity3d.com/ScriptReference/GL.IssuePluginEvent.html
 - **`RenderMethod2`**
     - `WaitForEndOfFrame` で待ってレンダリングが完了したタイミング
 
-**引数として渡した `eventType` はネイティブコード側で呼び出されたイベントを判別する際に利用します。**
+**引数として渡した `eventType` はネイティブコード側でイベントを判別する際に利用します。**
 
 ```csharp
 sealed class Sample : MonoBehaviour
@@ -717,7 +713,7 @@ func onRenderEvent(eventID: Int32) {
 #### ◆ ここまでの手順を自動化する
 
 `UnityFramework.h`を書き換えたり、一部のヘッダーファイルのアクセス権限を変更したりとしましたが、**最後にこれらの設定を全て Editor 拡張で自動化します。**
-(やり方はいつもの？ `[PostProcessBuild]` を用いた `PBXProject` の書き換えです。[詳しくはこちら](https://qiita.com/mao_/items/c678f93ee04608492788))
+(やり方はいつもの `[PostProcessBuild]` を用いた `PBXProject` の書き換えです。[詳しくはこちら](https://qiita.com/mao_/items/c678f93ee04608492788))
 
 コード全般は以下を御覧ください。
 
@@ -790,7 +786,7 @@ namespace LLNPISample.Plugins.LLNPIWithMetal.Editor
 
 :::note alert
 上記の例では `UnityFramework.h` を `[PostProcessBuild]` のタイミングで**事前に編集したソースコードと差し替える**と言う**ちょっとした黒魔術**を詠唱することでで問題を解決してますが、`UnityFramework.h` を含めた Unity が iOS ビルドで出力するコード全般は、 **Unity のバージョンアップによって内容が暗黙的に変わる可能性があるため、その点だけ念頭に置いておく必要があります。**
-(例えば Unity のバージョンを上げた際に差し替え元のコードに変更が走っていると、差し替えた際にコードが古くてエラーが起こる可能性がある)
+(例えば Unity のバージョンを上げた際に差し替え元のコードに変更が入っていると、差し替えた際にコードが古くてエラーが起こる可能性がある)
 :::
 
 
@@ -867,11 +863,11 @@ internal sealed class Sample : MonoBehaviour
 
 こちらは enum にて以下のように定義してます。
 
-- `ExtraDrawCall`
+- **`ExtraDrawCall`**
     - 既存の描画をフックして描画を追加で差し込む例
     - `OnPostRender`のタイミングで呼び出す
-    - 内容的には既存のレンダリングの上に赤い矩形を描画するだけ
-- `CopyRTtoRT`
+    - 内容的には既存のレンダリングに対し赤い矩形を描画するだけ
+- **`CopyRTtoRT`**
     - Unityのエンコーダーの終了を待った後に独自のエンコーダーを実行する例
     - `WaitForEndOfFrame` の後のタイミング(レンダリングが完了するタイミング)で呼び出す
     - 内容的には引数で渡した `src` を内部的なテクスチャ(バッファ)にコピーし、それを `dst` で渡されたバッファの上に描画する
@@ -898,7 +894,7 @@ private enum EventType
 }
 ```
 
-P/Invoke や [GL.IssuePluginEvent](https://docs.unity3d.com/ScriptReference/GL.IssuePluginEvent.html) 箇所は以下のようになってます。
+P/Invoke や [GL.IssuePluginEvent](https://docs.unity3d.com/ScriptReference/GL.IssuePluginEvent.html) の呼び出しを行う箇所は以下のようになってます。
 
 今回は iOS オンリーの例と言うのもあり、ネイティブ側には前の章でも軽く話した [RenderBuffer.GetNativeRenderBufferPtr](https://docs.unity3d.com/ScriptReference/RenderBuffer.GetNativeRenderBufferPtr.html) で得られるポインタを渡すようにしてます。
 
@@ -939,7 +935,7 @@ public sealed class NativeProxyForIOS : INativeProxy
 - [UnityPluginRegister.m](https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples/blob/main/UnityProjects/BuiltInRP/Assets/LLNPISample/Plugins/LLNPIWithMetal/Native/UnityPluginRegister.m)
     - 前の章で解説した `LLNPI` の周りの処理
 - [NativeCallProxy.swift](https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples/blob/main/UnityProjects/BuiltInRP/Assets/LLNPISample/Plugins/LLNPIWithMetal/Native/NativeCallProxy.swift)
-    - `LLNPI` 周りで呼び出される処理の一部や、 `LLNPI` に関わらない P/Invoke で呼び出される関数を定義
+    - `LLNPI` 周りで呼び出される処理の一部や、 `LLNPI` に関わらない P/Invoke で呼び出される関数を実装
 - [MetalPlugin.swift](https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples/blob/main/UnityProjects/BuiltInRP/Assets/LLNPISample/Plugins/LLNPIWithMetal/Native/MetalPlugin.swift)
     - 今回の実装のコアロジック
 - [MetalShader.swift](https://github.com/mao-test-h/LowLevelNativePluginWithMetal-Samples/blob/main/UnityProjects/BuiltInRP/Assets/LLNPISample/Plugins/LLNPIWithMetal/Native/MetalShader.swift)
@@ -988,7 +984,7 @@ func onUnityGfxDeviceEventInitialize() {
 
 `MetalPlugin` のイニシャライザは長いので折りたたみますが、要約すると以下のことをやってます。
 
-- `IUnityGraphicsMetalV1` から `MTLDevice`　を取得して保持
+- `IUnityGraphicsMetalV1` から `MTLDevice` を取得して保持
 - シェーダーコードの読み込み
 - レンダリングメソッドで描画する矩形オブジェクトの頂点情報の生成
 
@@ -1079,7 +1075,7 @@ func onUnityGfxDeviceEventInitialize() {
 > - `ExtraDrawCall`
 >     - 既存の描画をフックして描画を追加で差し込む例
 >     - `OnPostRender`のタイミングで呼び出す
->     - 内容的には既存のレンダリングの上に赤い矩形を描画するだけ
+>     - 内容的には既存のレンダリングに対し赤い矩形を描画するだけ
 
 こちらの実装解説に入ります。
 コード全体は以下を御覧ください。
@@ -1358,13 +1354,12 @@ func onUnityGfxDeviceEventInitialize() {
 
 #### ◆ 先ずは Unity が持つエンコーダーを先に終了させる
 
-コメントに書いてあるとおりですが、これから独自のエンコーダーを走らせていくので、その前に `EndCurrentCommandEncoder` を呼び出すことで Unity が持つエンコーダーを先に終了させておきます。
+コメントに書いてある通りですが、これから独自のエンコーダーを走らせていくので、その前に `EndCurrentCommandEncoder` を呼び出すことで Unity が持つエンコーダーを先に終了させておきます。
 
 ```swift:MetalPlugin.swift
-        // 独自のエンコーダーを作成する前に、Unityが持つエンコーダーを先に終了させる必要がある。
-        // NOTE: ただし、これを行う場合にはUnityに制御を戻す前に自前で走らせたエンコーダーは終了させておく必要がある。
-        unityMetal.EndCurrentCommandEncoder()
-
+    // 独自のエンコーダーを作成する前に、Unityが持つエンコーダーを先に終了させる必要がある。
+    // NOTE: ただし、これを行う場合にはUnityに制御を戻す前に自前で走らせたエンコーダーは終了させておく必要がある。
+    unityMetal.EndCurrentCommandEncoder()
 ```
 
 こちらも参考程度に `IUnityGraphicsMetal.h` にある関数宣言の方も再度引用しておきます。
@@ -1377,7 +1372,7 @@ func onUnityGfxDeviceEventInitialize() {
 
 #### ◆ P/Invoke で `RenderBuffer` のポインタを Unity からネイティブに渡して保持
 
-C# のコードに戻りますが、ここでは `DoCopyRT` を呼び出す際に `RenderBuffer` のポインタを P/Invoke でネイティブに渡してます。
+一度 C# のコードに戻りますが、ここでは `DoCopyRT` を呼び出す際に `RenderBuffer` のポインタを P/Invoke でネイティブに渡してます。
 
 ```csharp:NativeProxyForIOS.cs
 public sealed class NativeProxyForIOS : INativeProxy
@@ -1397,7 +1392,7 @@ public sealed class NativeProxyForIOS : INativeProxy
 }
 ```
 
-ここで渡されたポインタは Swift では以下のように受け取ることが出来るので、
+渡されたポインタは Swift では以下のように受け取ることが出来るので、
 
 ```swift:NativeCallProxy.swift
 // P/Invoke
@@ -1554,7 +1549,7 @@ typedef unsigned int UnityTextureID;
 
 ここまで長々と書いてきましたが、**本来の目的は冒頭にも記した通り [MetalFX](https://developer.apple.com/documentation/metalfx) と言う アップスケーリング技術を Unity 上で適用してみるのが本来の目的です。**
 
-こちらについてはフィジビリティ的なところまでは確認が出来ているので進展があり次第に、また解説記事を書こうと思います。
+こちらの進捗としては簡単なフィジビリティの確認までは出来ているので、進展があり次第に何かしらの形でアウトプットできればと思います。
 
 <blockquote class="twitter-tweet"><p lang="ja" dir="ltr">Unityの`Low-level native plug-in interface`を用いてBuilt In-RenderPipeline向けにMetalFXを組み込んでみたところ、結論から言えば上手く行かずに失敗したが...GPUDebuggerを見るに割と光明が見えてきた気がしなくもない。<br>※MetalFX → 今年のWWDCで発表があったアップスケーリング技術 <a href="https://t.co/V1jyr5miE7">pic.twitter.com/V1jyr5miE7</a></p>&mdash; mao🐑 (@TEST_H_) <a href="https://twitter.com/TEST_H_/status/1601796969445224448?ref_src=twsrc%5Etfw">December 11, 2022</a></blockquote> <script async src="https://platform.twitter.com/widgets.js" charset="utf-8"></script>
 
@@ -1575,6 +1570,3 @@ typedef unsigned int UnityTextureID;
     - [ Unity Androidのネイティブプラグイン（C++）でOpenGLのテクスチャデータをNativeArrayにコピーする](https://edom18.hateblo.jp/entry/2021/11/06/200037)
     - [Unity の Low-level Native Plugin Interface を調べてみた](https://tips.hecomi.com/entry/2014/01/19/201537)
     - [FrameworkでSwiftとObjective-C混ぜるのはやばい](https://qiita.com/fr0g_fr0g/items/82789af60b27ae19b263)
-
-
-
