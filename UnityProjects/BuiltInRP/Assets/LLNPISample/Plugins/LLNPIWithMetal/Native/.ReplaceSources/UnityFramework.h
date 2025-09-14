@@ -61,11 +61,11 @@ __attribute__ ((visibility("default")))
 - (void)sendMessageToGOWithName:(const char*)goName functionName:(const char*)name message:(const char*)msg;
 @end
 
-/// Swiftに `IUnityGraphicsMetalV1` を渡すためのブリッジ
+/// Swiftに `IUnityGraphicsMetalV2` を渡すためのブリッジ
 ///
 /// NOTE:
 /// Swiftからは「Low-level native plug-in interface」から受け取った
-/// `IUnityGraphicsMetalV1`に対して直接アクセスする術が無いので、
+/// `IUnityGraphicsMetalV2`に対して直接アクセスする術が無いので、
 /// こちらのクラスを介して構造体のポインタを渡す形を取っている。
 ///
 /// そのため、前提としてUnityがiOSビルド時に出力するソースの中で、
@@ -76,5 +76,5 @@ __attribute__ ((visibility("default")))
 __attribute__ ((visibility("default")))
 @interface UnityGraphicsBridge : NSObject {
 }
-+ (IUnityGraphicsMetalV1*)getUnityGraphicsMetalV1;
++ (IUnityGraphicsMetalV2*)getUnityGraphicsMetalV2;
 @end

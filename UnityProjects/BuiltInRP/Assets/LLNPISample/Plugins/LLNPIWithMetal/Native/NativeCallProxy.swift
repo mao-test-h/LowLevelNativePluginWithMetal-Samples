@@ -9,7 +9,7 @@ import Foundation
 /// NOTE: `OnGraphicsDeviceEvent -> kUnityGfxDeviceEventInitialize`のタイミングで呼び出される
 @_cdecl("onUnityGfxDeviceEventInitialize")
 func onUnityGfxDeviceEventInitialize() {
-    let unityMetal = UnityGraphicsBridge.getUnityGraphicsMetalV1().pointee
+    let unityMetal = UnityGraphicsBridge.getUnityGraphicsMetalV2().pointee
     MetalPlugin.shared = MetalPlugin(with: unityMetal)
 }
 
