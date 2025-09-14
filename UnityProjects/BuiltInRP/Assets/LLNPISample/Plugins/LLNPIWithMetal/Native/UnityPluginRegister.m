@@ -33,7 +33,7 @@ static IUnityGraphics* g_Graphics = 0;
 
 // NB finally in 2017.4 we switched to versioned metal plugin interface
 // NB old unversioned interface will be still provided for some time for backwards compatibility
-static IUnityGraphicsMetalV1* g_MetalGraphics = 0;
+static IUnityGraphicsMetalV2* g_MetalGraphics = 0;
 
 // NOTE: 各定義は `IUnityGraphics.h` を参照
 static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType eventType) {
@@ -55,7 +55,7 @@ static void UNITY_INTERFACE_API OnGraphicsDeviceEvent(UnityGfxDeviceEventType ev
 void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginLoad(IUnityInterfaces* unityInterfaces) {
     g_UnityInterfaces = unityInterfaces;
     g_Graphics = UNITY_GET_INTERFACE(g_UnityInterfaces, IUnityGraphics);
-    g_MetalGraphics = UNITY_GET_INTERFACE(g_UnityInterfaces, IUnityGraphicsMetalV1);
+    g_MetalGraphics = UNITY_GET_INTERFACE(g_UnityInterfaces, IUnityGraphicsMetalV2);
 
     // IUnityGraphics にイベントを登録
     // NOTE: kUnityGfxDeviceEventInitialize の後にプラグインのロードを受けるので、コールバックは手動で行う必要があるとのこと
@@ -77,7 +77,7 @@ void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload() {
 
 @implementation UnityGraphicsBridge {
 }
-+ (IUnityGraphicsMetalV1*)getUnityGraphicsMetalV1 {
++ (IUnityGraphicsMetalV2*)getUnityGraphicsMetalV2 {
     return g_MetalGraphics;
 }
 @end
@@ -97,7 +97,7 @@ void UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API UnityPluginUnload() {
 
 - (void)shouldAttachRenderDelegate {
     // NOTE: iOSはデスクトップとは違い、自動的にロードされて登録されないので手動で行う必要がある。
-    UnityRegisterRenderingPluginV5(&UnityPluginLoad, &UnityPluginUnload);
+    UnityRegisterPlugin(&UnityPluginLoad, &UnityPluginUnload);
 }
 @end
 

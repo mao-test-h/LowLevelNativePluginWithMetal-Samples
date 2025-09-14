@@ -9,7 +9,7 @@ final class MetalPlugin {
         case captureRT = 1
     }
 
-    private let unityMetal: IUnityGraphicsMetalV1
+    private let unityMetal: IUnityGraphicsMetalV2
     private let vertexShader: MTLFunction
     private let fragmentShaderColor: MTLFunction
     private let fragmentShaderTexture: MTLFunction
@@ -30,7 +30,7 @@ final class MetalPlugin {
     private var copySrc: UnityRenderBuffer? = nil
     private var copyDst: UnityRenderBuffer? = nil
 
-    init(with unityMetal: IUnityGraphicsMetalV1) {
+    init(with unityMetal: IUnityGraphicsMetalV2) {
         self.unityMetal = unityMetal
 
         guard let device: MTLDevice = unityMetal.MetalDevice() else {
