@@ -30,9 +30,6 @@ UnityRenderingEvent UNITY_INTERFACE_EXPORT UNITY_INTERFACE_API getRenderEventFun
 
 static IUnityInterfaces* g_UnityInterfaces = 0;
 static IUnityGraphics* g_Graphics = 0;
-
-// NB finally in 2017.4 we switched to versioned metal plugin interface
-// NB old unversioned interface will be still provided for some time for backwards compatibility
 static IUnityGraphicsMetalV2* g_MetalGraphics = 0;
 
 // NOTE: 各定義は `IUnityGraphics.h` を参照
